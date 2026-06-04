@@ -1,0 +1,115 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: '/api',
+  timeout: 15000,
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('auth');
+      window.location.href = '/';
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+
+// Auth
+export const loginDriver = (driver_id: string) =>
+  api.post('/auth/login/driver', { driver_id });
+
+export const loginEntrepreneur = (phone: string) =>
+  api.post('/auth/login/entrepreneur', { phone });
+
+export const loginGosuslugi = () =>
+  api.post('/auth/login/gosuslugi');
+
+// Users
+export const getMe = () => api.get('/users/me');
+export const updateMe = (data: object) => api.put('/users/me', data);
+
+// Tracking
+export const getPosition = () => api.get('/tracking/position');
+export const getRivals = (direction?: string) =>
+  api.get('/tracking/rivals', { params: direction ? { direction } : {} });
+export const getRivalsLive = (routes: string[]) =>
+  api.get('/tracking/rivals/live', { params: { routes: routes.join(',') } });
+export const requestRecommendation = (direction: string) =>
+  api.post('/tracking/request', { direction });
+
+// Reports
+export const scanReceipt = (file: File) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post('/reports/scan', fd);
+};
+export const createReport = (data: object) => api.post('/reports', data);
+export const getReports = (params?: object) => api.get('/reports', { params });
+export const getReport = (id: number) => api.get(`/reports/${id}`);
+export const updateReportStatus = (id: number, status: string) =>
+  api.put(`/reports/${id}/status`, { status });
+export const adjustReport = (id: number, status: string, notes?: string) =>
+  api.put(`/reports/${id}/adjust`, { status, notes });
+export const deleteReport = (id: number) => api.delete(`/reports/${id}`);
+
+// Routes
+export const getRoutes = () => api.get('/routes');
+export const createRoute = (data: object) => api.post('/routes', data);
+export const updateRoute = (id: number, data: object) => api.put(`/routes/${id}`, data);
+export const deleteRoute = (id: number) => api.delete(`/routes/${id}`);
+
+// Vehicles
+export const getVehicles = () => api.get('/vehicles');
+export const createVehicle = (data: object) => api.post('/vehicles', data);
+export const updateVehicle = (id: number, data: object) => api.put(`/vehicles/${id}`, data);
+export const deleteVehicle = (id: number) => api.delete(`/vehicles/${id}`);
+export const uploadVehiclePhoto = (id: number, file: File) => {
+  const fd = new FormData(); fd.append('file', file);
+  return api.post(`/vehicles/${id}/photo`, fd);
+};
+export const uploadMyPhoto = (file: File) => {
+  const fd = new FormData(); fd.append('file', file);
+  return api.post('/users/me/photo', fd);
+};
+export const getVehiclesMap = () => api.get('/vehicles/map');
+export const getVehicle = (id: number) => api.get(`/vehicles/${id}`);
+export const getVehicleRepairs = (id: number) => api.get(`/vehicles/${id}/repairs`);
+export const getVehicleInsurance = (id: number) => api.get(`/vehicles/${id}/insurance`);
+export const getVehicleMaintenance = (id: number) => api.get(`/vehicles/${id}/maintenance`);
+export const updateMaintenance = (id: number, data: object) =>
+  api.put(`/vehicles/${id}/maintenance`, data);
+export const updateInsurance = (id: number, data: object) =>
+  api.put(`/vehicles/${id}/insurance`, data);
+
+// Drivers
+export const getDrivers = () => api.get('/drivers');
+export const createDriver = (data: object) => api.post('/drivers', data);
+export const updateDriver = (id: number, data: object) => api.put(`/drivers/${id}`, data);
+export const deleteDriver = (id: number) => api.delete(`/drivers/${id}`);
+export const uploadDriverPhoto = (id: number, file: File) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post(`/drivers/${id}/photo`, fd);
+};
+
+// Repairs
+export const createRepair = (data: object) => api.post('/repairs', data);
+
+// Salary
+export const calculateSalary = (period: string) =>
+  api.get('/salary/calculate', { params: { period } });
+export const exportSalary = (period: string) =>
+  api.get('/salary/export', { params: { period }, responseType: 'blob' });

@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# База данных
+*.db
+*.sqlite3
+
+# Загрузки
+uploads/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Сборка фронтенда
+frontend/dist/
+frontend/build/
+
+# Логи
+*.log
+*.txt
+!requirements.txt
+
+# Скриншоты и дизайн
+screenshots/
+*.png
+design_ent/
+design_pages/
+
+# Скрипты для скриншотов
+screenshot*.mjs
+vite_output*.txt
+frontend_out.txt
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
