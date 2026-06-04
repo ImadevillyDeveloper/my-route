@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
-import { updateMe, getMe, uploadMyPhoto } from '../../api/client'
+import { getMe, uploadMyPhoto } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 
 const TILES = [
@@ -14,12 +14,8 @@ const TILES = [
 export default function EntProfile() {
   const navigate = useNavigate()
   const storedName = useAuthStore(s => s.fullName)
-  const setAuth = useAuthStore(s => s.setAuth)
   const { token, role, userId } = useAuthStore(s => ({ token: s.token, role: s.role, userId: s.userId }))
 
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
   const [showPartner, setShowPartner] = useState(false)
   const fireRef = useRef<HTMLButtonElement>(null)
   const [avatar, setAvatar] = useState<string | null>(null)
@@ -51,19 +47,12 @@ export default function EntProfile() {
 
   const displayName = storedName ?? 'Черепанов В.Г.'
 
-  const startEdit = () => { setDraft(displayName); setEditing(true) }
-
-  const save = async () => {
-    const name = draft.trim()
-    if (!name) return
-    setSaving(true)
-    try {
-      await updateMe({ full_name: name })
-      if (token && role && userId) setAuth(token, role, userId, name)
-      setEditing(false)
-    } catch {}
-    setSaving(false)
-  }
+  const shortName = (() => {
+    const parts = displayName.trim().split(/\s+/)
+    if (parts.length >= 3) return `${parts[0]} ${parts[1][0]}.${parts[2][0]}.`
+    if (parts.length === 2) return `${parts[0]} ${parts[1][0]}.`
+    return displayName
+  })()
 
   return (
     <div className="page">
@@ -89,48 +78,25 @@ export default function EntProfile() {
         </div>
 
         {/* Name */}
-        {editing ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', maxWidth: 280 }}>
-            <input
-              autoFocus
-              className="form-input"
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
-              style={{ flex: 1, fontSize: 15, fontWeight: 700, textAlign: 'center' }}
-            />
-            <button onClick={save} disabled={saving || !draft.trim()}
-              style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--orange)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </button>
-            <button onClick={() => setEditing(false)}
-              style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #E0E0E0', background: 'white', color: '#888', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', display: 'flex', alignItems: 'center', gap: 6 }}>
-              ИП {displayName}
-              <div style={{ position: 'relative', display: 'inline-flex' }}>
-                <button ref={fireRef} onClick={togglePartner}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', lineHeight: 0, display: 'flex', alignItems: 'center' }}>
-                  <img src="/fire.png" alt="fire" style={{ width: 24, height: 24 }} />
-                </button>
-                {showPartner && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowPartner(false)} />
-                    <div style={{ position: 'absolute', top: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 100, filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.18))' }}>
-                      <img src="/partner-badge.png" alt="Партнёр проекта" style={{ width: 220, borderRadius: 12, display: 'block' }} />
-                    </div>
-                  </>
-                )}
-              </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ИП {shortName}
+            <div style={{ position: 'relative', display: 'inline-flex' }}>
+              <button ref={fireRef} onClick={togglePartner}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', lineHeight: 0, display: 'flex', alignItems: 'center' }}>
+                <img src="/fire.png" alt="fire" style={{ width: 24, height: 24 }} />
+              </button>
+              {showPartner && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowPartner(false)} />
+                  <div style={{ position: 'absolute', top: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 100, filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.18))' }}>
+                    <img src="/partner-badge.png" alt="Партнёр проекта" style={{ width: 220, borderRadius: 12, display: 'block' }} />
+                  </div>
+                </>
+              )}
             </div>
-            <button onClick={startEdit}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* 2×2 grid */}

@@ -3,6 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getRoutes, getVehicles, deleteRoute as apiDeleteRoute, updateRoute } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
+import { useAuthStore } from '../../store/auth'
+
+const toParkName = (name: string | null): string => {
+  if (!name) return 'ИП'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 3) return `ИП ${parts[0]} ${parts[1][0]}.${parts[2][0]}.`
+  if (parts.length === 2) return `ИП ${parts[0]} ${parts[1][0]}.`
+  return `ИП ${name}`
+}
 
 const inLineCount = (total: number, routeId: number): number => {
   if (total === 0) return 0
@@ -50,6 +59,7 @@ function EditableRow({ icon, label, value, onChange, locked }: {
 export default function EntRouteDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const parkName = toParkName(useAuthStore(s => s.fullName))
   const [base, setBase] = useState<any>(null)
   const [data, setData] = useState<any>(null)
   const [totalVehicles, setTotalVehicles] = useState(0)
@@ -133,7 +143,7 @@ export default function EntRouteDetail() {
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>}
-            label="Парк" value="ИП Черепанов В.Г." locked
+            label="Парк" value={parkName} locked
           />
         </div>
 

@@ -3,6 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
+import { useAuthStore } from '../../store/auth'
+
+const toParkName = (name: string | null): string => {
+  if (!name) return 'ИП'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 3) return `ИП ${parts[0]} ${parts[1][0]}.${parts[2][0]}.`
+  if (parts.length === 2) return `ИП ${parts[0]} ${parts[1][0]}.`
+  return `ИП ${name}`
+}
 
 const abbreviate = (name: string): string => {
   const parts = name.trim().split(/\s+/)
@@ -102,6 +111,7 @@ export default function EntVehicleDetail() {
   const { id } = useParams()
   const [v, setV] = useState<any>(null)
   const navigate = useNavigate()
+  const parkName = toParkName(useAuthStore(s => s.fullName))
   const storageKey = `vehicle_extra_${id}`
 
   const [data, setData] = useState<typeof VEHICLE_DEFAULTS>(() => {
@@ -275,7 +285,7 @@ export default function EntVehicleDetail() {
 
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
-            label="Парк" value="ИП Черепанов В.Г." locked
+            label="Парк" value={parkName} locked
           />
         </div>
 

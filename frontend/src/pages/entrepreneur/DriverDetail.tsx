@@ -3,6 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getDrivers, updateDriver, deleteDriver, uploadDriverPhoto, getVehicles, getRoutes } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
+import { useAuthStore } from '../../store/auth'
+
+const toParkName = (name: string | null): string => {
+  if (!name) return 'ИП'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 3) return `ИП ${parts[0]} ${parts[1][0]}.${parts[2][0]}.`
+  if (parts.length === 2) return `ИП ${parts[0]} ${parts[1][0]}.`
+  return `ИП ${name}`
+}
 
 interface Driver {
   id: number
@@ -153,6 +162,7 @@ function DropdownRow({ icon, label, value, options, onSelect, onClear, dataAttr 
 export default function EntDriverDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const parkName = toParkName(useAuthStore(s => s.fullName))
 
   const [driver, setDriver]               = useState<Driver | null>(null)
   const [loading, setLoading]             = useState(true)
@@ -301,6 +311,10 @@ export default function EntDriverDetail() {
             options={platesToShow}
             onSelect={selectPlate}
             dataAttr="data-driver-plate-drop"
+          />
+          <EditableRow
+            icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
+            label="Парк" value={parkName} locked
           />
         </div>
 
