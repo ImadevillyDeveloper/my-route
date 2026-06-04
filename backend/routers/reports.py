@@ -38,6 +38,7 @@ def create_report(
 ):
     report = models.Report(
         driver_id=current_user.id,
+        owner_id=current_user.owner_id,
         **report_in.model_dump(),
     )
     db.add(report)
@@ -57,6 +58,8 @@ def list_reports(
     q = db.query(models.Report)
     if current_user.role == models.UserRole.driver:
         q = q.filter(models.Report.driver_id == current_user.id)
+    elif current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Report.owner_id == current_user.id)
     if driver_id:
         q = q.filter(models.Report.driver_id == driver_id)
     if status:

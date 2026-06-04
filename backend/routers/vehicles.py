@@ -43,8 +43,10 @@ def list_vehicles(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    vehicles = db.query(models.Vehicle).all()
-    return [_vehicle_out(v, db) for v in vehicles]
+    q = db.query(models.Vehicle)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Vehicle.owner_id == current_user.id)
+    return [_vehicle_out(v, db) for v in q.all()]
 
 
 @router.get("/map", response_model=list[schemas.VehicleMapOut])
@@ -52,7 +54,10 @@ def get_vehicles_map(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    vehicles = db.query(models.Vehicle).all()
+    q = db.query(models.Vehicle)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Vehicle.owner_id == current_user.id)
+    vehicles = q.all()
     result = []
     for v in vehicles:
         route = db.query(models.Route).filter(models.Route.id == v.route_id).first() if v.route_id else None
@@ -73,7 +78,10 @@ def get_vehicle(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    v = db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id).first()
+    q = db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Vehicle.owner_id == current_user.id)
+    v = q.first()
     if not v:
         raise HTTPException(404, "Vehicle not found")
     return _vehicle_out(v, db)
@@ -113,7 +121,10 @@ def update_vehicle(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    v = db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id).first()
+    q = db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Vehicle.owner_id == current_user.id)
+    v = q.first()
     if not v:
         raise HTTPException(404, "Vehicle not found")
     if update.plate_number is not None:
@@ -153,7 +164,10 @@ def delete_vehicle(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    v = db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id).first()
+    q = db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Vehicle.owner_id == current_user.id)
+    v = q.first()
     if not v:
         raise HTTPException(404, "Vehicle not found")
     # Снимаем привязку водителей к этому ТС

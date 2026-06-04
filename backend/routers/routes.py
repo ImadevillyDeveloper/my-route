@@ -12,7 +12,10 @@ def list_routes(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return db.query(models.Route).all()
+    q = db.query(models.Route)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Route.owner_id == current_user.id)
+    return q.all()
 
 
 @router.post("", response_model=schemas.RouteOut, status_code=201)
@@ -34,7 +37,10 @@ def get_route(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    route = db.query(models.Route).filter(models.Route.id == route_id).first()
+    q = db.query(models.Route).filter(models.Route.id == route_id)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Route.owner_id == current_user.id)
+    route = q.first()
     if not route:
         raise HTTPException(404, "Route not found")
     return route
@@ -47,7 +53,10 @@ def update_route(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    route = db.query(models.Route).filter(models.Route.id == route_id).first()
+    q = db.query(models.Route).filter(models.Route.id == route_id)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Route.owner_id == current_user.id)
+    route = q.first()
     if not route:
         raise HTTPException(404, "Route not found")
     for k, v in update.model_dump(exclude_none=True).items():
@@ -63,7 +72,10 @@ def delete_route(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    route = db.query(models.Route).filter(models.Route.id == route_id).first()
+    q = db.query(models.Route).filter(models.Route.id == route_id)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Route.owner_id == current_user.id)
+    route = q.first()
     if not route:
         raise HTTPException(404, "Route not found")
     db.delete(route)

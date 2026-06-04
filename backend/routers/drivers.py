@@ -16,8 +16,10 @@ def list_drivers(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    drivers = db.query(models.User).filter(models.User.role == models.UserRole.driver).all()
-    return [_driver_out(d, db) for d in drivers]
+    q = db.query(models.User).filter(models.User.role == models.UserRole.driver)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.User.owner_id == current_user.id)
+    return [_driver_out(d, db) for d in q.all()]
 
 
 @router.post("", response_model=schemas.DriverOut, status_code=201)
@@ -35,6 +37,7 @@ def create_driver(
         role=models.UserRole.driver,
         vehicle_plate=driver_in.plate_number or None,
         route_number=driver_in.route_number or None,
+        owner_id=current_user.id,
     )
     db.add(user)
     try:
@@ -53,10 +56,13 @@ def update_driver(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user = db.query(models.User).filter(
+    q = db.query(models.User).filter(
         models.User.id == driver_id,
         models.User.role == models.UserRole.driver,
-    ).first()
+    )
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.User.owner_id == current_user.id)
+    user = q.first()
     if not user:
         raise HTTPException(404, "Driver not found")
     if update.full_name is not None:
@@ -78,10 +84,13 @@ def delete_driver(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user = db.query(models.User).filter(
+    q = db.query(models.User).filter(
         models.User.id == driver_id,
         models.User.role == models.UserRole.driver,
-    ).first()
+    )
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.User.owner_id == current_user.id)
+    user = q.first()
     if not user:
         raise HTTPException(404, "Driver not found")
     db.query(models.Report).filter(models.Report.driver_id == driver_id).delete()
