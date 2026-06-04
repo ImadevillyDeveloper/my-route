@@ -20,7 +20,7 @@ if db.query(models.User).count() > 0:
 
 # Entrepreneur
 entrepreneur = models.User(
-    phone="+79001234567",
+    phone="+79131523645",
     full_name="Черепанов Виктор Геннадьевич",
     role=models.UserRole.entrepreneur,
 )
@@ -133,6 +133,6 @@ for v in vehicles:
 
 db.commit()
 print("OK Seed data created successfully!")
-print(f"   Entrepreneur: +79001234567")
+print(f"   Entrepreneur: +79131523645")
 print(f"   Drivers: 00 00 123456, 00 00 234567, 00 00 345678, 00 00 456789")
 db.close()
