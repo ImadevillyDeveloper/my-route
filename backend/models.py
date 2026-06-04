@@ -41,6 +41,7 @@ class User(Base):
     avatar_url = Column(String, nullable=True)
     vehicle_plate = Column(String, nullable=True)   # назначенное ТС (много водителей → одно ТС)
     route_number  = Column(String, nullable=True)   # назначенный маршрут (прямое поле)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     reports = relationship("Report", back_populates="driver", foreign_keys="Report.driver_id")
@@ -104,6 +105,7 @@ class Report(Base):
     notes = Column(Text, nullable=True)
     receipt_image_url = Column(String, nullable=True)
     status = Column(Enum(ReportStatus), default=ReportStatus.pending)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
