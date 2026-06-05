@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle } from '../../api/client'
+import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, getRoutes, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import { useAuthStore } from '../../store/auth'
@@ -124,10 +124,14 @@ export default function EntVehicleDetail() {
 
   const [dropOpen, setDropOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, right: 0 })
+  const [routeDropOpen, setRouteDropOpen] = useState(false)
+  const [routeDropPos, setRouteDropPos] = useState({ top: 0, right: 0 })
+  const [routes, setRoutes] = useState<string[]>([])
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [photo, setPhoto] = useState<string | null>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
+  const routeRowRef = useRef<HTMLDivElement>(null)
   const [allDrivers, setAllDrivers] = useState<any[]>([])
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,6 +153,7 @@ export default function EntVehicleDetail() {
       if (r.data.avatar_url) setPhoto(`http://localhost:8000${r.data.avatar_url}`)
     }).catch(() => {})
     getDrivers().then(r => setAllDrivers(r.data)).catch(() => {})
+    getRoutes().then(r => setRoutes(r.data.map((rt: any) => rt.number))).catch(() => {})
 
     // Загружаем страховку и ТО из БД, перекрываем localStorage-значения
     Promise.all([
@@ -175,6 +180,29 @@ export default function EntVehicleDetail() {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [dropOpen])
+
+  useEffect(() => {
+    if (!routeDropOpen) return
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-route-drop]')) setRouteDropOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [routeDropOpen])
+
+  const changeRoute = async (newRoute: string) => {
+    setRouteDropOpen(false)
+    if (!id || newRoute === v?.route_number) return
+    // Обновляем ТС
+    await apiUpdateVehicle(Number(id), { route_number: newRoute }).catch(() => {})
+    setV((prev: any) => prev ? { ...prev, route_number: newRoute } : prev)
+    // Синхронизируем маршрут у всех водителей этого ТС
+    const assigned = allDrivers.filter((d: any) => d.plate_number === v?.plate_number)
+    await Promise.all(assigned.map(d => updateDriver(d.id, { route_number: newRoute }).catch(() => {})))
+    setAllDrivers(prev => prev.map((d: any) =>
+      assigned.some(ad => ad.id === d.id) ? { ...d, route_number: newRoute } : d
+    ))
+  }
 
   const saveData = (next: typeof VEHICLE_DEFAULTS) => {
     setData(next)
@@ -262,8 +290,31 @@ export default function EntVehicleDetail() {
           </div>
         </div>
 
-        {/* Водители — мультивыбор */}
+        {/* Маршрут + Водители */}
         <div className="card">
+          {/* Маршрут — dropdown */}
+          <div data-route-drop>
+            <div ref={routeRowRef} className="row-item" style={{ cursor: 'pointer' }}
+              onClick={() => {
+                if (!routeDropOpen && routeRowRef.current) {
+                  const r = routeRowRef.current.getBoundingClientRect()
+                  setRouteDropPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
+                }
+                setRouteDropOpen(o => !o)
+              }}>
+              <OIcon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 17l2-7h14l2 7"/><path d="M5 17H2"/><path d="M19 17h3"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/></svg>
+              </OIcon>
+              <span className="row-label">Маршрут</span>
+              <span style={{ color: route ? 'var(--orange)' : 'var(--text-muted)', fontWeight: route ? 600 : 400, fontSize: 14, marginRight: 4 }}>
+                {route ? `№ ${route}` : 'Не указан'}
+              </span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                <polyline points={routeDropOpen ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/>
+              </svg>
+            </div>
+          </div>
+
           <div data-drivers-drop>
             <div ref={rowRef} className="row-item" style={{ cursor: 'pointer', flexWrap: 'wrap', gap: 4 }}
               onClick={() => {
@@ -351,6 +402,25 @@ export default function EntVehicleDetail() {
       )}
 
       {/* Multi-select dropdown — position: fixed поверх всего */}
+      {/* Route dropdown */}
+      {routeDropOpen && (
+        <div data-route-drop style={{ position: 'fixed', top: routeDropPos.top, right: routeDropPos.right, zIndex: 1001, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.16)', border: '1px solid var(--border)', minWidth: 160, maxHeight: 260, overflowY: 'auto' }}>
+          <div style={{ padding: '10px 16px 6px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Выберите маршрут
+          </div>
+          {routes.length === 0
+            ? <div style={{ padding: '12px 16px', fontSize: 14, color: 'var(--text-muted)' }}>Нет маршрутов</div>
+            : routes.map(r => (
+              <div key={r} onClick={() => changeRoute(r)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', fontSize: 14, fontWeight: route === r ? 700 : 500, color: route === r ? 'var(--orange)' : 'var(--text-primary)', background: route === r ? '#FFF3EE' : 'white', cursor: 'pointer', borderBottom: '1px solid #F5F5F5' }}>
+                <span>№ {r}</span>
+                {route === r && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+              </div>
+            ))
+          }
+        </div>
+      )}
+
       {dropOpen && (
         <div data-drivers-drop style={{ position: 'fixed', top: dropPos.top, right: dropPos.right, zIndex: 1000, background: 'white', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.16)', border: '1px solid var(--border)', minWidth: 220 }}>
           <div style={{ padding: '10px 16px 6px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
