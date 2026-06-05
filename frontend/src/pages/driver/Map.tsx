@@ -134,7 +134,11 @@ export default function DriverMap() {
 
   useEffect(() => {
     window.addEventListener('focus', loadAndFetch)
-    return () => window.removeEventListener('focus', loadAndFetch)
+    window.addEventListener('rival-routes-changed', loadAndFetch)
+    return () => {
+      window.removeEventListener('focus', loadAndFetch)
+      window.removeEventListener('rival-routes-changed', loadAndFetch)
+    }
   }, [loadAndFetch])
 
   // ── Инициализация карты ─────────────────────────────────────────
@@ -155,7 +159,14 @@ export default function DriverMap() {
     ymapRef.current = new window.ymaps.Map(mapRef.current, {
       center: [OMSK_LAT, OMSK_LNG], zoom: 14, controls: ['zoomControl'],
     })
+    setTimeout(() => ymapRef.current?.container?.fitToViewport(), 50)
   }, [mapReady])
+
+  useEffect(() => {
+    const handleResize = () => { if (ymapRef.current) ymapRef.current.container.fitToViewport() }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // ── Метка водителя ───────────────────────────────────────────────
   useEffect(() => {
@@ -296,7 +307,7 @@ export default function DriverMap() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
       <StatusBar />
 
       <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -318,7 +329,7 @@ export default function DriverMap() {
         </button>
       </div>
 
-      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+      <div style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
         {!mapReady && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#E8E8E8', flexDirection: 'column', gap: 12 }}>
             <LogoLoader size={72} />
@@ -347,7 +358,7 @@ export default function DriverMap() {
         )}
       </div>
 
-      <div style={{ background: 'white', borderTop: '1px solid var(--border)', padding: '12px 14px', paddingBottom: 'calc(12px + var(--nav-height))' }}>
+      <div className="map-info-bar" style={{ background: 'white', borderTop: '1px solid var(--border)', padding: '12px 14px', paddingBottom: 'calc(12px + var(--nav-safe))' }}>
         {hint ? (
           <div style={{ background: 'var(--orange-bg)', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 18 }}>⚡</span>

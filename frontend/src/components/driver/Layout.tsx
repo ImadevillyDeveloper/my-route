@@ -56,10 +56,47 @@ export default function DriverLayout() {
   const isReportActive = location.pathname === '/driver/report'
 
   return (
-    <div className="page">
-      <Outlet />
+    <div className="layout-root">
+      <aside className="sidebar-nav">
+        <div className="sidebar-logo">
+          <img src="/bus.png" width="36" height="36" />
+          <div>
+            <div className="sidebar-logo-name">Мой.Маршрут</div>
+            <div className="sidebar-logo-role">Водитель</div>
+          </div>
+        </div>
+        <div className="sidebar-items">
+          {navItems.slice(0, 2).map(({ to, label, icon }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}>
+              {({ isActive }) => (
+                <>
+                  <div className="sidebar-item-icon">{icon(isActive)}</div>
+                  <span>{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+          <button className={`sidebar-item${isReportActive ? ' active' : ''}`} onClick={() => setShowModal(true)}>
+            <div className="sidebar-item-icon">{REPORT_ICON(isReportActive)}</div>
+            <span>Отчёт</span>
+          </button>
+          {navItems.slice(2).map(({ to, label, icon }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}>
+              {({ isActive }) => (
+                <>
+                  <div className="sidebar-item-icon">{icon(isActive)}</div>
+                  <span>{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
+      </aside>
 
-      <nav className="bottom-nav">
+      <div className="page">
+        <Outlet />
+
+        <nav className="bottom-nav">
         {navItems.slice(0, 2).map(({ to, label, icon }) => (
           <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             {({ isActive }) => (
@@ -92,6 +129,8 @@ export default function DriverLayout() {
           </NavLink>
         ))}
       </nav>
+
+      </div>
 
       {/* Модалка "Сформировать отчёт?" */}
       {showModal && (
@@ -142,3 +181,4 @@ export default function DriverLayout() {
     </div>
   )
 }
+

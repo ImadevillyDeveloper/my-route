@@ -2,9 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { getRoutesWithOverrides } from '../../api/routes'
+import { sendSupport } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 
 const FAV_ROUTE_KEY = 'ent_favorite_route'
+
+const TOPICS = [
+  { value: 'bug',      label: '🐛 Техническая проблема' },
+  { value: 'question', label: '❓ Вопрос' },
+  { value: 'proposal', label: '💡 Предложение' },
+  { value: 'other',    label: '📝 Другое' },
+]
 
 const GosuslugiLogo = () => (
   <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
@@ -24,13 +32,21 @@ const LogoutIcon = ({ size = 22, color = 'var(--orange)' }: { size?: number; col
 interface Route { number: string; name: string; start_point: string; end_point: string }
 
 export default function EntSettings() {
-  const [routes, setRoutes] = useState<Route[]>([])
-  const [favorite, setFavorite] = useState<string>(() => localStorage.getItem(FAV_ROUTE_KEY) ?? '')
-  const [dropOpen, setDropOpen] = useState(false)
-  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
+  const [routes, setRoutes]               = useState<Route[]>([])
+  const [favorite, setFavorite]           = useState<string>(() => localStorage.getItem(FAV_ROUTE_KEY) ?? '')
+  const [dropOpen, setDropOpen]           = useState(false)
+  const [dropPos, setDropPos]             = useState({ top: 0, left: 0, width: 0 })
   const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const rowRef = useRef<HTMLDivElement>(null)
-  const logout = useAuthStore((s) => s.logout)
+  const [showSupport, setShowSupport]     = useState(false)
+  const [topic, setTopic]                 = useState('bug')
+  const [message, setMessage]             = useState('')
+  const [contact, setContact]             = useState('')
+  const [sending, setSending]             = useState(false)
+  const [sent, setSent]                   = useState(false)
+  const [sendError, setSendError]         = useState('')
+  const rowRef   = useRef<HTMLDivElement>(null)
+  const logout   = useAuthStore((s) => s.logout)
+  const phone    = useAuthStore((s) => s.fullName)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -65,9 +81,24 @@ export default function EntSettings() {
     localStorage.removeItem(FAV_ROUTE_KEY)
   }
 
-  const handleLogout = () => {
-    logout()
-    navigate('/', { replace: true })
+  const handleLogout = () => { logout(); navigate('/', { replace: true }) }
+
+  const openSupport = () => {
+    setTopic('bug'); setMessage(''); setContact(''); setSent(false); setSendError('')
+    setShowSupport(true)
+  }
+
+  const handleSend = async () => {
+    if (!message.trim()) { setSendError('Напишите сообщение'); return }
+    setSending(true); setSendError('')
+    try {
+      await sendSupport({ topic, message: message.trim(), contact: contact.trim() || undefined })
+      setSent(true)
+    } catch {
+      setSendError('Не удалось отправить. Попробуйте позже.')
+    } finally {
+      setSending(false)
+    }
   }
 
   const favRoute = routes.find(r => r.number === favorite)
@@ -89,11 +120,10 @@ export default function EntSettings() {
             ТС этого маршрута отображаются на карте при открытии приложения
           </div>
 
-          {/* Selected route preview */}
           {favRoute && (
             <div style={{ background: '#FFF3EE', borderRadius: 12, padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 17l2-7h14l2 7"/><path d="M5 17H2"/><path d="M19 17h3"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/></svg>
+                <img src="/route-fav.png" width="22" height="22" style={{ filter: 'brightness(0) invert(1)' }} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--orange)' }}>№ {favRoute.number}</div>
@@ -105,7 +135,6 @@ export default function EntSettings() {
             </div>
           )}
 
-          {/* Dropdown trigger */}
           <div data-fav-drop ref={rowRef} onClick={openDrop}
             className="form-input"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: favorite ? 'var(--orange)' : 'var(--text-muted)', fontWeight: favorite ? 600 : 400, fontSize: 14 }}>
@@ -124,7 +153,7 @@ export default function EntSettings() {
                   return (
                     <div key={rt.number} onMouseDown={() => selectRoute(rt.number)}
                       style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: isSelected ? '#FFF3EE' : 'white', borderBottom: '1px solid #F5F5F5' }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 8, background: isSelected ? 'var(--orange)' : '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: isSelected ? 'var(--orange)' : '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <span style={{ fontWeight: 800, fontSize: 13, color: isSelected ? 'white' : 'var(--text-muted)' }}>{rt.number}</span>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -160,7 +189,7 @@ export default function EntSettings() {
 
         {/* Тех.поддержка */}
         <div className="card" style={{ padding: 0 }}>
-          <div className="row-item" style={{ cursor: 'pointer', padding: '16px' }}>
+          <div className="row-item" style={{ cursor: 'pointer', padding: '16px' }} onClick={openSupport}>
             <span style={{ fontWeight: 700, fontSize: 15 }}>Тех.поддержка</span>
             <span style={{ marginLeft: 'auto', color: 'var(--orange)', fontSize: 22 }}>›</span>
           </div>
@@ -182,7 +211,98 @@ export default function EntSettings() {
         <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>О приложении</span>
       </div>
 
-      {/* Logout Modal */}
+      {/* ── Модал: Тех.поддержка ── */}
+      {showSupport && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
+          <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 400, boxShadow: '0 16px 48px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+
+            {/* Header */}
+            <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+                <span style={{ fontWeight: 800, fontSize: 17 }}>Тех.поддержка</span>
+              </div>
+              <button onClick={() => setShowSupport(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888', lineHeight: 1 }}>✕</button>
+            </div>
+
+            {sent ? (
+              /* Успешная отправка */
+              <div style={{ padding: '36px 24px', textAlign: 'center' }}>
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#E8F8EC', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Обращение отправлено!</div>
+                <div style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 24 }}>
+                  Мы свяжемся с вами в ближайшее время.
+                </div>
+                <button onClick={() => setShowSupport(false)}
+                  style={{ width: '100%', padding: '14px', borderRadius: 50, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+                  Закрыть
+                </button>
+              </div>
+            ) : (
+              /* Форма */
+              <div style={{ padding: '20px' }}>
+
+                {/* Тема */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Тема обращения</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {TOPICS.map(t => (
+                      <button key={t.value} onClick={() => setTopic(t.value)}
+                        style={{ padding: '7px 12px', borderRadius: 20, border: `1.5px solid ${topic === t.value ? 'var(--orange)' : 'var(--border)'}`, background: topic === t.value ? '#FFF3EE' : 'white', color: topic === t.value ? 'var(--orange)' : 'var(--text-secondary)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Контакт */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Как с вами связаться</div>
+                  <input
+                    className="form-input"
+                    placeholder="Телефон или e-mail"
+                    value={contact}
+                    onChange={e => setContact(e.target.value)}
+                    style={{ fontSize: 14 }}
+                  />
+                </div>
+
+                {/* Сообщение */}
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Опишите проблему или вопрос</div>
+                  <textarea
+                    className="form-input"
+                    placeholder="Подробно опишите, что произошло..."
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    rows={4}
+                    style={{ resize: 'none', fontSize: 14, lineHeight: 1.5 }}
+                  />
+                </div>
+
+                {sendError && (
+                  <div style={{ fontSize: 13, color: '#FF3B30', marginBottom: 12, padding: '8px 12px', background: '#FFF0EF', borderRadius: 10 }}>
+                    {sendError}
+                  </div>
+                )}
+
+                <button onClick={handleSend} disabled={sending}
+                  style={{ width: '100%', padding: '14px', borderRadius: 50, border: 'none', background: sending ? '#FFAA77' : 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 15, cursor: sending ? 'default' : 'pointer' }}>
+                  {sending ? 'Отправка...' : 'Отправить'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Модал: Выйти ── */}
       {showLogoutModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
           <div style={{ background: 'white', borderRadius: 24, padding: '32px 28px 28px', width: '100%', maxWidth: 340, position: 'relative', textAlign: 'center' }}>

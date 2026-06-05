@@ -108,6 +108,10 @@ export const uploadDriverPhoto = (id: number, file: File) => {
 // Repairs
 export const createRepair = (data: object) => api.post('/repairs', data);
 
+// Support
+export const sendSupport = (data: { topic: string; message: string; contact?: string }) =>
+  api.post('/support', data);
+
 // Salary
 export const calculateSalary = (period: string) =>
   api.get('/salary/calculate', { params: { period } });

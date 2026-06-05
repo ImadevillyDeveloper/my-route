@@ -109,7 +109,8 @@ export default function Login() {
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, padding: '24px 20px 16px' }}>
+      <div style={{ flex: 1, padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 440 }}>
 
         {/* Welcome */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -186,19 +187,35 @@ export default function Login() {
             {loadingEnt ? 'Вход...' : 'Войти'}
           </button>
 
-          <div style={{ textAlign: 'center', color: '#999', fontSize: 13, marginBottom: 10 }}>или</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 10px' }}>
+            <div style={{ flex: 1, height: 1, background: '#E8E8E8' }} />
+            <span style={{ fontSize: 12, color: '#BBB', fontWeight: 500 }}>или</span>
+            <div style={{ flex: 1, height: 1, background: '#E8E8E8' }} />
+          </div>
 
           <button
             onClick={handleGosuslugi}
             disabled={loadingGos}
-            style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', opacity: loadingGos ? 0.6 : 1 }}
+            style={{
+              width: '100%', padding: '12px 16px',
+              background: 'white', border: '1.5px solid #D0D8E4',
+              borderRadius: 12, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: 10,
+              cursor: loadingGos ? 'default' : 'pointer',
+              opacity: loadingGos ? 0.65 : 1,
+              transition: 'border-color 0.15s, box-shadow 0.15s',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => { if (!loadingGos) { (e.currentTarget as HTMLButtonElement).style.borderColor = '#1466AC'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(20,102,172,0.15)' } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#D0D8E4'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none' }}
           >
-            {loadingGos
-              ? <div style={{ padding: '13px', background: 'white', border: '1.5px solid #E0E0E0', borderRadius: 12, textAlign: 'center', fontWeight: 700, color: '#0066CC' }}>Вход...</div>
-              : <img src="/gosuslugi.png" alt="Войти через Госуслуги" style={{ width: '100%', display: 'block', borderRadius: 12 }} />
-            }
+            <img src="/gosuslugi-logo.svg" alt="" style={{ height: 26, width: 'auto', flexShrink: 0 }} />
+            <span style={{ color: '#1A1A1A', fontWeight: 600, fontSize: 14 }}>
+              {loadingGos ? 'Вход...' : 'Войти через Госуслуги'}
+            </span>
           </button>
         </div>
+      </div>
       </div>
 
       {/* Footer */}

@@ -40,20 +40,44 @@ const navItems = [
 
 export default function EntrepreneurLayout() {
   return (
-    <div className="page">
-      <Outlet />
-      <nav className="bottom-nav">
-        {navItems.map(({ to, label, icon }) => (
-          <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            {({ isActive }) => (
-              <>
-                <div className="nav-item-icon">{icon(isActive)}</div>
-                <span className="nav-item-label">{label}</span>
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
+    <div className="layout-root">
+      <aside className="sidebar-nav">
+        <div className="sidebar-logo">
+          <img src="/bus.png" width="36" height="36" />
+          <div>
+            <div className="sidebar-logo-name">Мой.Маршрут</div>
+            <div className="sidebar-logo-role">Предприниматель</div>
+          </div>
+        </div>
+        <div className="sidebar-items">
+          {navItems.map(({ to, label, icon }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}>
+              {({ isActive }) => (
+                <>
+                  <div className="sidebar-item-icon">{icon(isActive)}</div>
+                  <span>{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
+      </aside>
+
+      <div className="page">
+        <Outlet />
+        <nav className="bottom-nav">
+          {navItems.map(({ to, label, icon }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+              {({ isActive }) => (
+                <>
+                  <div className="nav-item-icon">{icon(isActive)}</div>
+                  <span className="nav-item-label">{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
     </div>
   )
 }

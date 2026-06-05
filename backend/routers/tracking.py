@@ -1,6 +1,7 @@
 import hashlib
 import math
 import random
+import threading
 import time
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
@@ -30,10 +31,12 @@ BUS55_HEADERS = {
     "Referer":      "https://bus-55.ru/",
 }
 
-_session: dict  = {"sid": None, "exp": 0.0}
-_req_id: list   = [1]
+_session: dict    = {"sid": None, "exp": 0.0}
+_req_id: list     = [1]
 _live_cache: dict = {"vehicles": [], "ts": 0.0}
-_CACHE_TTL = 12  # seconds — shared across all requests
+_cache_lock       = threading.Lock()
+_CACHE_TTL        = 30   # seconds — consumers always get cached data
+_REFRESH_INTERVAL = 25   # background thread refreshes before TTL expires
 
 
 def _ts() -> int:
@@ -127,14 +130,36 @@ def _fetch_all_units() -> list[dict]:
 
 
 def _get_cached_units() -> list[dict]:
-    """Return cached vehicle list, refreshing if TTL expired."""
-    now = time.time()
-    if now - _live_cache["ts"] < _CACHE_TTL and _live_cache["vehicles"]:
-        return _live_cache["vehicles"]
+    """Return cached vehicle list. Background thread keeps cache warm — no blocking wait."""
+    with _cache_lock:
+        if _live_cache["vehicles"]:
+            return list(_live_cache["vehicles"])
+    # Cache is empty (first startup) — fetch synchronously once
     vehicles = _fetch_all_units()
-    _live_cache["vehicles"] = vehicles
-    _live_cache["ts"] = now
+    with _cache_lock:
+        _live_cache["vehicles"] = vehicles
+        _live_cache["ts"] = time.time()
     return vehicles
+
+
+def _background_refresh() -> None:
+    """Daemon thread: keeps Navitrans cache warm, refreshing every _REFRESH_INTERVAL seconds."""
+    time.sleep(5)  # let the app fully start before first fetch
+    while True:
+        try:
+            vehicles = _fetch_all_units()
+            if vehicles:
+                with _cache_lock:
+                    _live_cache["vehicles"] = vehicles
+                    _live_cache["ts"] = time.time()
+        except Exception:
+            pass
+        time.sleep(_REFRESH_INTERVAL)
+
+
+# Start background refresh daemon on module load
+_refresh_thread = threading.Thread(target=_background_refresh, daemon=True)
+_refresh_thread.start()
 
 
 # ── Fallback mock ─────────────────────────────────────────────────

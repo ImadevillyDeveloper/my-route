@@ -190,14 +190,14 @@ export default function EntReports() {
   // ── PENDING VIEW ──────────────────────────────────────────────────
   if (view === 'pending') {
     return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
         <StatusBar />
         <div className="app-header">
           <button className="app-header-back" onClick={() => setView('overview')}>←</button>
           <span className="app-header-title">Ожидают проверки</span>
           <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 20, padding: '2px 10px', color: 'white', fontWeight: 700, fontSize: 13 }}>{allPending.length}</span>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', paddingBottom: 'calc(var(--nav-height) + 10px)' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', paddingBottom: 'calc(var(--nav-safe) + 10px)' }}>
           {allPending.length === 0 ? (
             <div className="empty-state" style={{ marginTop: 30 }}>
               <div className="empty-icon">📋</div>
@@ -212,14 +212,14 @@ export default function EntReports() {
   // ── REVIEWED VIEW ─────────────────────────────────────────────────
   if (view === 'reviewed') {
     return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
         <StatusBar />
         <div className="app-header">
           <button className="app-header-back" onClick={() => setView('overview')}>←</button>
           <span className="app-header-title">Проверенные отчёты</span>
           <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 20, padding: '2px 10px', color: 'white', fontWeight: 700, fontSize: 13 }}>{allReviewed.length}</span>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', paddingBottom: 'calc(var(--nav-height) + 10px)' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', paddingBottom: 'calc(var(--nav-safe) + 10px)' }}>
           {allReviewed.length === 0 ? (
             <div className="empty-state" style={{ marginTop: 30 }}>
               <div className="empty-icon">✅</div>
@@ -233,7 +233,7 @@ export default function EntReports() {
 
   // ── OVERVIEW VIEW ─────────────────────────────────────────────────
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
       <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
@@ -337,7 +337,7 @@ export default function EntReports() {
       </div>
 
       {/* Scrollable reports */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', paddingBottom: 'calc(var(--nav-height) + 10px)' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', paddingBottom: 'calc(var(--nav-safe) + 10px)' }}>
         {loading ? (
           <LogoLoader fullPage />
         ) : isEmpty ? (

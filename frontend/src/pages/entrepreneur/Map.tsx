@@ -127,6 +127,7 @@ export default function EntMap() {
   const [routes, setRoutes]               = useState<RouteInfo[]>([])
   const [favoriteRoute, setFavoriteRoute] = useState<string>(() => localStorage.getItem(FAV_ROUTE_KEY) ?? '')
   const [navVehicles, setNavVehicles]     = useState<NavVehicle[]>([])
+  const [navLoaded, setNavLoaded]         = useState(false)
   const [showPanel, setShowPanel]         = useState(false)
   const [selectedNav, setSelectedNav]     = useState<NavVehicle | null>(null)
   const [selectedLocal, setSelectedLocal] = useState<LocalVehicle | null>(null)
@@ -156,8 +157,11 @@ export default function EntMap() {
 
   // Poll Navitrans for the selected route
   useEffect(() => {
-    if (!favoriteRoute) { setNavVehicles([]); return }
-    const fetch = () => getRivalsLive([favoriteRoute]).then(r => setNavVehicles(r.data)).catch(() => {})
+    if (!favoriteRoute) { setNavVehicles([]); setNavLoaded(false); return }
+    setNavLoaded(false)
+    const fetch = () => getRivalsLive([favoriteRoute])
+      .then(r => { setNavVehicles(r.data); setNavLoaded(true) })
+      .catch(() => { setNavLoaded(true) })
     fetch()
     const t = setInterval(fetch, 12000)
     return () => clearInterval(t)
@@ -306,7 +310,7 @@ export default function EntMap() {
       </div>
 
       {/* Bottom info bar */}
-      <div style={{ background: 'white', borderTop: '1px solid var(--border)', padding: '12px 16px', paddingBottom: 'calc(12px + var(--nav-height))' }}>
+      <div className="map-info-bar" style={{ background: 'white', borderTop: '1px solid var(--border)', padding: '12px 16px', paddingBottom: 'calc(12px + var(--nav-safe))' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -320,8 +324,10 @@ export default function EntMap() {
                   return <span key={dir} style={{ fontSize: 12, color: 'var(--text-muted)' }}>→ {dest} <strong style={{ color: 'var(--text-primary)' }}>{cnt}</strong></span>
                 })}
               </div>
-            ) : favoriteRoute ? (
+            ) : favoriteRoute && !navLoaded ? (
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>загрузка данных...</span>
+            ) : favoriteRoute && navLoaded ? (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>нет ТС на маршруте № {favoriteRoute}</span>
             ) : favInfo ? (
               <div style={{ display: 'flex', gap: 12 }}>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>→ {favInfo.end_point} <strong style={{ color: 'var(--text-primary)' }}>{toForwardLocal}</strong></span>
@@ -442,21 +448,17 @@ export default function EntMap() {
         const dot        = getDotColor(v.direction)
 
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end' }}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
             onClick={e => { if (e.target === e.currentTarget) setSelectedNav(null) }}>
-            <div style={{ background: 'white', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 430, margin: '0 auto', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
+            <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
 
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
-                <div style={{ width: 36, height: 4, borderRadius: 2, background: '#E0E0E0' }} />
-              </div>
-
-              <div style={{ padding: '4px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
+              <div style={{ padding: '18px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
                 <span style={{ fontWeight: 800, fontSize: 17 }}>ТС на линии</span>
                 <button onClick={() => setSelectedNav(null)}
                   style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888', lineHeight: 1, padding: '0 4px' }}>✕</button>
               </div>
 
-              <div style={{ padding: '20px 20px 0' }}>
+              <div style={{ padding: '16px 20px 0' }}>
 
                 {/* Direction + plate + model */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 20 }}>
@@ -548,21 +550,17 @@ export default function EntMap() {
         const departure  = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end' }}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
             onClick={e => { if (e.target === e.currentTarget) setSelectedLocal(null) }}>
-            <div style={{ background: 'white', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 430, margin: '0 auto', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
+            <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
 
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
-                <div style={{ width: 36, height: 4, borderRadius: 2, background: '#E0E0E0' }} />
-              </div>
-
-              <div style={{ padding: '4px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
+              <div style={{ padding: '18px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
                 <span style={{ fontWeight: 800, fontSize: 17 }}>ТС на линии</span>
                 <button onClick={() => setSelectedLocal(null)}
                   style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888', lineHeight: 1, padding: '0 4px' }}>✕</button>
               </div>
 
-              <div style={{ padding: '20px 20px 0' }}>
+              <div style={{ padding: '16px 20px 0' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 20 }}>
                   <div style={{ width: 12, height: 12, borderRadius: '50%', background: dot, flexShrink: 0, marginTop: 4 }} />
                   <div style={{ flex: 1 }}>

@@ -4,7 +4,7 @@ export default function SelectRole() {
   const navigate = useNavigate()
 
   return (
-    <div className="page-no-nav" style={{ background: 'var(--bg-white)', minHeight: '100vh' }}>
+    <div className="page-no-nav" style={{ background: 'var(--bg-white)', minHeight: '100dvh' }}>
       <div style={{ background: 'var(--orange)', padding: '48px 24px 32px', textAlign: 'center' }}>
         <div style={{ fontSize: 56, marginBottom: 8 }}>🚌</div>
         <h1 style={{ color: 'white', fontSize: 28, fontWeight: 800, letterSpacing: '-0.5px' }}>

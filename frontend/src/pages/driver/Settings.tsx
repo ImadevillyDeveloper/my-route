@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
+import { sendSupport } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
+
+const TOPICS = [
+  { value: 'bug',      label: '🐛 Техническая проблема' },
+  { value: 'question', label: '❓ Вопрос' },
+  { value: 'proposal', label: '💡 Предложение' },
+  { value: 'other',    label: '📝 Другое' },
+]
 
 // Все маршруты Омска, подключённые к системе ГЛОНАСС
 const OMSK_ROUTES: { type: string; routes: string[] }[] = [
@@ -41,11 +49,34 @@ export default function DriverSettings() {
   const inputRef = useRef<HTMLInputElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [showSupport, setShowSupport]   = useState(false)
+  const [topic, setTopic]               = useState('bug')
+  const [message, setMessage]           = useState('')
+  const [contact, setContact]           = useState('')
+  const [sending, setSending]           = useState(false)
+  const [sent, setSent]                 = useState(false)
+  const [sendError, setSendError]       = useState('')
   const navigate = useNavigate()
   const logout = useAuthStore(s => s.logout)
 
+  const openSupport = () => {
+    setTopic('bug'); setMessage(''); setContact(''); setSent(false); setSendError('')
+    setShowSupport(true)
+  }
+
+  const handleSend = async () => {
+    if (!message.trim()) { setSendError('Напишите сообщение'); return }
+    setSending(true); setSendError('')
+    try {
+      await sendSupport({ topic, message: message.trim(), contact: contact.trim() || undefined })
+      setSent(true)
+    } catch { setSendError('Не удалось отправить. Попробуйте позже.') }
+    finally { setSending(false) }
+  }
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rivals))
+    window.dispatchEvent(new CustomEvent('rival-routes-changed'))
   }, [rivals])
 
   const toggle = (r: string) =>
@@ -152,7 +183,7 @@ export default function DriverSettings() {
 
         {/* Support */}
         <div className="card">
-          <div className="row-item" style={{ cursor: 'pointer' }}>
+          <div className="row-item" style={{ cursor: 'pointer' }} onClick={openSupport}>
             <div className="row-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             </div>
@@ -194,6 +225,62 @@ export default function DriverSettings() {
       {dropOpen && inputValue.trim() && suggestions.length === 0 && (
         <div style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid var(--border)', zIndex: 2000, padding: '12px 16px', fontSize: 14, color: 'var(--text-muted)' }}>
           {rivals.includes(inputValue.trim()) ? 'Уже добавлен' : 'Маршрут не найден'}
+        </div>
+      )}
+
+      {/* Support modal */}
+      {showSupport && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
+          <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 400, boxShadow: '0 16px 48px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+                <span style={{ fontWeight: 800, fontSize: 17 }}>Тех.поддержка</span>
+              </div>
+              <button onClick={() => setShowSupport(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888', lineHeight: 1 }}>✕</button>
+            </div>
+
+            {sent ? (
+              <div style={{ padding: '36px 24px', textAlign: 'center' }}>
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#E8F8EC', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Обращение отправлено!</div>
+                <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 24, lineHeight: 1.6 }}>Мы свяжемся с вами в ближайшее время.</div>
+                <button onClick={() => setShowSupport(false)} style={{ width: '100%', padding: '14px', borderRadius: 50, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Закрыть</button>
+              </div>
+            ) : (
+              <div style={{ padding: '20px' }}>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Тема обращения</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {TOPICS.map(t => (
+                      <button key={t.value} onClick={() => setTopic(t.value)}
+                        style={{ padding: '7px 12px', borderRadius: 20, border: `1.5px solid ${topic === t.value ? 'var(--orange)' : 'var(--border)'}`, background: topic === t.value ? '#FFF3EE' : 'white', color: topic === t.value ? 'var(--orange)' : 'var(--text-secondary)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Как с вами связаться</div>
+                  <input className="form-input" placeholder="Телефон или e-mail" value={contact} onChange={e => setContact(e.target.value)} style={{ fontSize: 14 }} />
+                </div>
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Опишите проблему или вопрос</div>
+                  <textarea className="form-input" placeholder="Подробно опишите, что произошло..." value={message} onChange={e => setMessage(e.target.value)} rows={4} style={{ resize: 'none', fontSize: 14, lineHeight: 1.5 }} />
+                </div>
+                {sendError && <div style={{ fontSize: 13, color: '#FF3B30', marginBottom: 12, padding: '8px 12px', background: '#FFF0EF', borderRadius: 10 }}>{sendError}</div>}
+                <button onClick={handleSend} disabled={sending} style={{ width: '100%', padding: '14px', borderRadius: 50, border: 'none', background: sending ? '#FFAA77' : 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 15, cursor: sending ? 'default' : 'pointer' }}>
+                  {sending ? 'Отправка...' : 'Отправить'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

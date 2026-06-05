@@ -2,7 +2,7 @@ export default function StatusBar({ dark = false }: { dark?: boolean }) {
   const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
   const bg = dark ? '#1A1A1A' : 'var(--orange)'
   return (
-    <div style={{ background: bg, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
+    <div className="status-bar" style={{ background: bg, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
       <span style={{ color: 'white', fontSize: 12, fontWeight: 700 }}>{time}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <svg width="16" height="12" viewBox="0 0 16 12" fill="white">

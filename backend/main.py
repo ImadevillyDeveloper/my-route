@@ -6,7 +6,7 @@ import os
 from sqlalchemy import text
 from .database import engine
 from . import models
-from .routers import auth, users, tracking, reports, routes, vehicles, repairs, salary, drivers
+from .routers import auth, users, tracking, reports, routes, vehicles, repairs, salary, drivers, support
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -70,6 +70,7 @@ app.include_router(vehicles.router)
 app.include_router(repairs.router)
 app.include_router(salary.router)
 app.include_router(drivers.router)
+app.include_router(support.router)
 
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

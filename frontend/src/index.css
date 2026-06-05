@@ -20,11 +20,16 @@
   --radius-lg: 16px;
   --radius-pill: 50px;
   --nav-height: 62px;
+  --nav-safe: calc(62px + env(safe-area-inset-bottom, 0px));
   --header-height: 52px;
   --status-height: 24px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html {
+  height: -webkit-fill-available;
+}
 
 html, body {
   font-family: 'Jost', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -34,10 +39,12 @@ html, body {
   background: var(--bg-gray);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+  height: 100%;
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   max-width: 430px;
   margin: 0 auto;
   background: var(--bg-gray);
@@ -88,7 +95,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 
 /* ── Page ── */
-.page { min-height: 100vh; background: var(--bg-gray); padding-bottom: var(--nav-height); }
+.page { min-height: 100vh; min-height: 100dvh; background: var(--bg-gray); padding-bottom: var(--nav-safe); }
 .page-scroll { overflow-y: auto; }
 
 /* ── White card ── */
@@ -181,11 +188,13 @@ input, textarea, select { font-family: inherit; outline: none; }
 .bottom-nav {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
   width: 100%; max-width: 430px;
-  height: var(--nav-height);
+  height: var(--nav-safe);
   background: white;
   border-top: 1px solid #EBEBEB;
-  display: flex; align-items: center; justify-content: space-around;
-  z-index: 200; padding: 0 4px 4px;
+  display: flex; align-items: flex-start; justify-content: space-around;
+  z-index: 200;
+  padding: 0 4px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
@@ -285,3 +294,107 @@ input, textarea, select { font-family: inherit; outline: none; }
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Sidebar nav (desktop only) ── */
+.sidebar-nav { display: none; }
+.layout-root  { min-height: 100dvh; }
+
+/* ── Desktop layout (≥ 768px) ── */
+@media (min-width: 768px) {
+  #root {
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .layout-root {
+    display: flex;
+    flex-direction: row;
+    height: 100dvh;
+    overflow: hidden;
+    min-height: unset;
+  }
+
+  /* Sidebar */
+  .sidebar-nav {
+    display: flex !important;
+    flex-direction: column;
+    width: 240px;
+    min-width: 240px;
+    height: 100dvh;
+    background: white;
+    border-right: 1px solid #EBEBEB;
+    overflow-y: auto;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+
+  .sidebar-logo {
+    padding: 20px 16px 16px;
+    border-bottom: 1px solid #EBEBEB;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .sidebar-logo-name  { font-size: 17px; font-weight: 800; color: var(--text-primary); line-height: 1.2; }
+  .sidebar-logo-role  { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+
+  .sidebar-items { padding: 10px 8px; flex: 1; }
+
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 15px;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+    margin-bottom: 2px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    font-family: inherit;
+    text-align: left;
+  }
+  .sidebar-item:hover  { background: var(--bg-gray); color: var(--text-primary); }
+  .sidebar-item.active { background: var(--orange-bg); color: var(--orange); }
+  .sidebar-item-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; background: var(--bg-gray);
+    transition: background 0.15s;
+  }
+  .sidebar-item.active .sidebar-item-icon { background: #FFE8D6; }
+
+  /* Page content area */
+  .page {
+    flex: 1;
+    min-height: unset;
+    height: 100dvh;
+    overflow-y: auto;
+    padding-bottom: 0;
+    min-width: 0;
+  }
+
+  /* Bottom nav: hide on desktop */
+  .bottom-nav { display: none !important; }
+
+  /* Status bar (fake phone bar): hide on desktop */
+  .status-bar { display: none !important; }
+
+  /* App header: sticky on desktop */
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  /* Map: offset by sidebar width so it doesn't overlap sidebar */
+  .map-page-root { left: 240px !important; }
+
+  /* Map bottom bar: nav is hidden on desktop, remove nav-safe padding */
+  .map-info-bar { padding-bottom: 12px !important; }
+}
