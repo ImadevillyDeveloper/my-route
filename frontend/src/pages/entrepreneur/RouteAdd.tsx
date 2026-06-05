@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createRoute } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
+import { capitalizeFirst, formatCert } from '../../utils/format'
 
 const CheckCircle = () => (
   <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2.5px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -13,11 +14,15 @@ export default function EntRouteAdd() {
   const navigate = useNavigate()
   const [form, setForm] = useState({ number: '', end1: '', end2: '', cert: '' })
   const [showSuccess, setShowSuccess] = useState(false)
+  const [error, setError] = useState('')
   const s = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }))
+  const sEnd = (k: 'end1'|'end2') => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: capitalizeFirst(e.target.value) }))
+  const sCert = (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, cert: formatCert(e.target.value) }))
 
   const submit = async () => {
-    if (!form.number) return
-    await createRoute({ number: form.number, name: `Маршрут ${form.number}`, start_point: form.end1, end_point: form.end2, document_number: form.cert }).catch(() => {})
+    if (!form.number.trim()) { setError('Укажите номер маршрута'); return }
+    setError('')
+    await createRoute({ number: form.number.trim(), name: `Маршрут ${form.number.trim()}`, start_point: form.end1, end_point: form.end2, document_number: form.cert }).catch(() => {})
     setShowSuccess(true)
   }
 
@@ -40,8 +45,8 @@ export default function EntRouteAdd() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Данные маршрута *</div>
               <input className="form-input" placeholder="Номер" value={form.number} onChange={s('number')} style={{ padding: '8px 12px', fontSize: 14 }} />
-              <input className="form-input" placeholder="Конечная 1" value={form.end1} onChange={s('end1')} style={{ padding: '8px 12px', fontSize: 14 }} />
-              <input className="form-input" placeholder="Конечная 2" value={form.end2} onChange={s('end2')} style={{ padding: '8px 12px', fontSize: 14 }} />
+              <input className="form-input" placeholder="Конечная 1" value={form.end1} onChange={sEnd('end1')} style={{ padding: '8px 12px', fontSize: 14 }} />
+              <input className="form-input" placeholder="Конечная 2" value={form.end2} onChange={sEnd('end2')} style={{ padding: '8px 12px', fontSize: 14 }} />
             </div>
           </div>
         </div>
@@ -53,7 +58,7 @@ export default function EntRouteAdd() {
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             </div>
             <span className="row-label">Свидетельство</span>
-            <input className="row-input" placeholder="00 123456" value={form.cert} onChange={s('cert')} />
+            <input className="row-input" placeholder="00 123456" value={form.cert} onChange={sCert} />
           </div>
           <div className="row-item">
             <div className="row-icon">
@@ -64,6 +69,12 @@ export default function EntRouteAdd() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </div>
         </div>
+
+        {error && (
+          <div style={{ background: '#FFF0F0', border: '1.5px solid #FFB3B3', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#CC3333', fontWeight: 600 }}>
+            {error}
+          </div>
+        )}
 
         {/* Submit button */}
         <button onClick={submit} style={{ marginTop: 8, padding: '16px 24px', borderRadius: 16, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 800, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>

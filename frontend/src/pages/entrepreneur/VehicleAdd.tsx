@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getVehicles, getRoutes, createVehicle, updateInsurance, updateMaintenance, getDrivers, updateDriver, uploadVehiclePhoto } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
+import { formatPlate } from '../../utils/format'
 
 const abbr = (n: string) => {
   const p = n.trim().split(/\s+/)
@@ -346,7 +347,7 @@ export default function EntVehicleAdd() {
                 <div style={{ flex: 2 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Гос. номер *</div>
                   <input className="form-input" placeholder="А 123 АА 55" value={form.plate}
-                    onChange={e => setForm(p => ({ ...p, plate: e.target.value }))} style={{ fontSize: 13 }} />
+                    onChange={e => setForm(p => ({ ...p, plate: formatPlate(e.target.value) }))} style={{ fontSize: 13 }} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Маршрут</div>

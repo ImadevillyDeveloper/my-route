@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getRoutes, getVehicles, deleteRoute as apiDeleteRoute, updateRoute } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
+import { formatCert, capitalizeFirst } from '../../utils/format'
 import { useAuthStore } from '../../store/auth'
 
 const toParkName = (name: string | null): string => {
@@ -131,15 +132,15 @@ export default function EntRouteDetail() {
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>}
-            label="Свидетельство" value={data.document_number ?? ''} onChange={set('document_number')}
+            label="Свидетельство" value={data.document_number ?? ''} onChange={v => set('document_number')(formatCert(v))}
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/></svg>}
-            label="Начальная точка" value={data.start_point ?? ''} onChange={set('start_point')}
+            label="Начальная точка" value={data.start_point ?? ''} onChange={v => set('start_point')(capitalizeFirst(v))}
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>}
-            label="Конечная точка" value={data.end_point ?? ''} onChange={set('end_point')}
+            label="Конечная точка" value={data.end_point ?? ''} onChange={v => set('end_point')(capitalizeFirst(v))}
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>}

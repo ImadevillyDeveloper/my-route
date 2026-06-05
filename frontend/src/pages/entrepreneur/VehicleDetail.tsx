@@ -4,6 +4,7 @@ import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import { useAuthStore } from '../../store/auth'
+import { formatPlate } from '../../utils/format'
 
 const toParkName = (name: string | null): string => {
   if (!name) return 'ИП'
@@ -64,10 +65,10 @@ function InlinePlate({ value, onChange }: { value: string; onChange: (v: string)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const start = () => { setDraft(value); setEditing(true); setTimeout(() => inputRef.current?.focus(), 0) }
-  const save = () => { setEditing(false); if (draft.trim() && draft !== value) onChange(draft.trim()) }
+  const save = () => { const v = formatPlate(draft); setEditing(false); if (v && v !== value) onChange(v) }
 
   if (editing) return (
-    <input ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)}
+    <input ref={inputRef} value={draft} onChange={e => setDraft(formatPlate(e.target.value))}
       onBlur={save} onKeyDown={e => e.key === 'Enter' && save()}
       style={{ fontWeight: 800, fontSize: 16, border: 'none', borderBottom: '2px solid var(--orange)', background: 'transparent', outline: 'none', fontFamily: 'inherit', color: 'var(--text-primary)', width: '100%', padding: 0 }} />
   )

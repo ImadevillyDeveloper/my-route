@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getVehicles, getRoutes, createDriver, uploadDriverPhoto } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
+import { formatVU, formatPhone, capitalizeName } from '../../utils/format'
 
 const CheckCircle = () => (
   <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2.5px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -121,6 +122,9 @@ export default function EntDriverAdd() {
   }
 
   const s = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }))
+  const sName = (k: 'last'|'first'|'mid') => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: capitalizeName(e.target.value) }))
+  const sVU = (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, vu: formatVU(e.target.value) }))
+  const sPhone = (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, phone: formatPhone(e.target.value) }))
 
   const pickPhoto = (f: File) => {
     setPhotoFile(f)
@@ -170,7 +174,7 @@ export default function EntDriverAdd() {
               {(['Фамилия', 'Имя', 'Отчество'] as const).map((ph, i) => (
                 <input key={ph} className="form-input" placeholder={ph}
                   value={[form.last, form.first, form.mid][i]}
-                  onChange={s((['last', 'first', 'mid'] as const)[i])}
+                  onChange={sName((['last', 'first', 'mid'] as const)[i])}
                   style={{ padding: '8px 12px', fontSize: 14 }} />
               ))}
             </div>
@@ -184,7 +188,7 @@ export default function EntDriverAdd() {
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             </OIcon>
             <span className="row-label">Номер ВУ *</span>
-            <input className="row-input" placeholder="00 00 123456" value={form.vu} onChange={s('vu')} />
+            <input className="row-input" placeholder="00 00 123456" value={form.vu} onChange={sVU} />
           </div>
           {presetRoute ? (
             <div className="row-item">
@@ -210,7 +214,7 @@ export default function EntDriverAdd() {
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             </OIcon>
             <span className="row-label">Телефон</span>
-            <input className="row-input" placeholder="8-123-456-78-90" value={form.phone} onChange={s('phone')} />
+            <input className="row-input" placeholder="+7 (xxx) xxx-xx-xx" value={form.phone} onChange={sPhone} />
           </div>
         </div>
 
