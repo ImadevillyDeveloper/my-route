@@ -223,12 +223,15 @@ export default function Login() {
         <div style={{ color: 'white', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
           © Мои.Маршрутчики, 2026
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <span style={{ fontSize: 14 }}>✈️</span>
-          <a href="#" style={{ color: 'white', fontSize: 12, textDecoration: 'underline' }}>
-            Наш проект в Telegram
-          </a>
-        </div>
+        <a
+          href="https://t.me/+sqIPcxR1DeU4M2My"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
+        >
+          <img src="/telegram-logo.png" alt="Telegram" style={{ width: 18, height: 18 }} />
+          <span style={{ color: 'white', fontSize: 12, textDecoration: 'underline' }}>Наш проект в Telegram</span>
+        </a>
       </div>
     </div>
   )
