@@ -396,6 +396,9 @@ input, textarea, select { font-family: inherit; outline: none; }
   /* Map: offset by sidebar width so it doesn't overlap sidebar */
   .map-page-root { left: 240px !important; }
 
+  /* Map modals: center relative to map area (right of sidebar) */
+  .map-overlay { left: 240px !important; }
+
   /* Map bottom bar: nav is hidden on desktop, remove nav-safe padding */
   .map-info-bar { padding-bottom: 12px !important; }
 }

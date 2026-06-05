@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { loginDriver, loginEntrepreneur, loginGosuslugi } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import StatusBar from '../components/common/StatusBar'
+import { formatVU } from '../utils/format'
 
 function BusLogo() {
   return (
@@ -44,7 +45,9 @@ export default function Login() {
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const handleDriver = async () => {
-    if (!driverVU.trim()) { setErrorDriver('Введите номер ВУ'); return }
+    const digits = driverVU.replace(/\D/g, '')
+    if (!digits) { setErrorDriver('Введите номер ВУ'); return }
+    if (digits.length < 10) { setErrorDriver('Номер ВУ: 10 цифр — например, 00 00 123456'); return }
     setLoadingDriver(true); setErrorDriver('')
     try {
       const res = await loginDriver(driverVU.trim())
@@ -138,9 +141,9 @@ export default function Login() {
               className="form-input"
               placeholder="Номер ВУ"
               value={driverVU}
-              onChange={e => setDriverVU(e.target.value)}
+              onChange={e => { setDriverVU(formatVU(e.target.value)); setErrorDriver('') }}
               onKeyDown={e => e.key === 'Enter' && handleDriver()}
-              style={{ paddingLeft: 42, background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12 }}
+              style={{ paddingLeft: 42, background: '#fff', border: `1.5px solid ${errorDriver ? 'var(--danger)' : '#E0E0E0'}`, borderRadius: 12 }}
             />
           </div>
           {errorDriver && (
@@ -150,7 +153,7 @@ export default function Login() {
             {loadingDriver ? 'Вход...' : 'Войти'}
           </button>
           <button
-            onClick={() => { setDriverVU('00 00 123456'); setTimeout(handleDriver, 100) }}
+            onClick={() => { setDriverVU(formatVU('00 00 123456')); setTimeout(handleDriver, 100) }}
             style={{ width: '100%', padding: '13px', background: 'white', border: '1.5px solid #E0E0E0', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', fontSize: 15, fontWeight: 600, color: '#333' }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="1.8" strokeLinecap="round">

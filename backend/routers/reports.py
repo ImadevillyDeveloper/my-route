@@ -36,10 +36,18 @@ def create_report(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    data = report_in.model_dump()
+    plate = data.pop("plate_number", None)
+    vehicle_id = None
+    if plate:
+        v = db.query(models.Vehicle).filter(models.Vehicle.plate_number == plate).first()
+        if v:
+            vehicle_id = v.id
     report = models.Report(
         driver_id=current_user.id,
         owner_id=current_user.owner_id,
-        **report_in.model_dump(),
+        vehicle_id=vehicle_id,
+        **data,
     )
     db.add(report)
     db.commit()
@@ -52,6 +60,7 @@ def list_reports(
     driver_id: Optional[int] = None,
     status: Optional[str] = None,
     period: Optional[str] = None,
+    plate_number: Optional[str] = None,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -66,6 +75,9 @@ def list_reports(
         q = q.filter(models.Report.status == status)
     if period:
         q = q.filter(models.Report.shift_date.like(f"{period}%"))
+    if plate_number:
+        v = db.query(models.Vehicle).filter(models.Vehicle.plate_number == plate_number).first()
+        q = q.filter(models.Report.vehicle_id == (v.id if v else -1))
     reports = q.order_by(models.Report.created_at.desc()).all()
     return [_report_out(r, db) for r in reports]
 
@@ -133,10 +145,12 @@ def delete_report(
 
 def _report_out(report: models.Report, db: Session) -> schemas.ReportOut:
     driver = db.query(models.User).filter(models.User.id == report.driver_id).first()
+    vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == report.vehicle_id).first() if report.vehicle_id else None
     return schemas.ReportOut(
         id=report.id,
         driver_id=report.driver_id,
         route_number=report.route_number,
+        plate_number=vehicle.plate_number if vehicle else None,
         shift_date=report.shift_date,
         shift_start=report.shift_start,
         shift_end=report.shift_end,

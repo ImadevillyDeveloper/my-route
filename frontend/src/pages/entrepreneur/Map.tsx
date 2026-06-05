@@ -346,7 +346,7 @@ export default function EntMap() {
 
       {/* ── Panel: список ТС (Навитранс) ── */}
       {showPanel && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
+        <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
           onClick={e => { if (e.target === e.currentTarget) setShowPanel(false) }}>
           <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 390, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
 
@@ -448,7 +448,7 @@ export default function EntMap() {
         const dot        = getDotColor(v.direction)
 
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
+          <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
             onClick={e => { if (e.target === e.currentTarget) setSelectedNav(null) }}>
             <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
 
@@ -550,7 +550,7 @@ export default function EntMap() {
         const departure  = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
+          <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
             onClick={e => { if (e.target === e.currentTarget) setSelectedLocal(null) }}>
             <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
 

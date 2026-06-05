@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { getReports } from '../../api/client'
+import { getReports, getVehicles } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import type { Report } from '../../types'
@@ -98,6 +98,7 @@ function FilterLabel({ children }: { children: React.ReactNode }) {
 
 export default function EntReports() {
   const [reports, setReports] = useState<Report[]>([])
+  const [allVehiclePlates, setAllVehiclePlates] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView]       = useState<View>('overview')
   const navigate = useNavigate()
@@ -109,6 +110,7 @@ export default function EntReports() {
   const [dPeriod,   setDPeriod]   = useState<PeriodKey>('all')
   const [dRoutes,   setDRoutes]   = useState<Set<string>>(new Set())
   const [dDrivers,  setDDrivers]  = useState<Set<string>>(presetDriver ? new Set([presetDriver]) : new Set())
+  const [dVehicles, setDVehicles] = useState<Set<string>>(new Set())
   const [dFrom, setDFrom] = useState('')
   const [dTo,   setDTo]   = useState('')
 
@@ -117,18 +119,21 @@ export default function EntReports() {
   const [aPeriod,   setAPeriod]   = useState<PeriodKey>('all')
   const [aRoutes,   setARoutes]   = useState<Set<string>>(new Set())
   const [aDrivers,  setADrivers]  = useState<Set<string>>(presetDriver ? new Set([presetDriver]) : new Set())
+  const [aVehicles, setAVehicles] = useState<Set<string>>(new Set())
   const [aFrom, setAFrom] = useState('')
   const [aTo,   setATo]   = useState('')
   const [applied, setApplied] = useState(!!presetDriver)
 
   useEffect(() => {
-    getReports().then(r => {
+    Promise.all([getReports(), getVehicles()]).then(([r, v]) => {
       setReports(r.data)
+      setAllVehiclePlates(v.data.map((veh: any) => veh.plate_number).filter(Boolean))
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
-  const routes  = [...new Set(reports.map(r => r.route_number ?? '212').filter(Boolean))]
-  const drivers = [...new Set(reports.map(r => r.driver_name ?? 'Водитель').filter(Boolean))]
+  const routes   = [...new Set(reports.map(r => r.route_number ?? '212').filter(Boolean))]
+  const drivers  = [...new Set(reports.map(r => r.driver_name ?? 'Водитель').filter(Boolean))]
+  const vehicles = allVehiclePlates
 
   const toggleSet = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) =>
     setter(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
@@ -136,20 +141,22 @@ export default function EntReports() {
   const handleApply = () => {
     setAStatuses(new Set(dStatuses)); setAPeriod(dPeriod)
     setARoutes(new Set(dRoutes));     setADrivers(new Set(dDrivers))
+    setAVehicles(new Set(dVehicles))
     setAFrom(dFrom); setATo(dTo); setApplied(true); setFiltersOpen(false)
   }
 
   const handleReset = () => {
-    setDStatuses(new Set()); setDPeriod('all'); setDRoutes(new Set()); setDDrivers(new Set()); setDFrom(''); setDTo('')
-    setAStatuses(new Set()); setAPeriod('all'); setARoutes(new Set()); setADrivers(new Set()); setAFrom(''); setATo('')
+    setDStatuses(new Set()); setDPeriod('all'); setDRoutes(new Set()); setDDrivers(new Set()); setDVehicles(new Set()); setDFrom(''); setDTo('')
+    setAStatuses(new Set()); setAPeriod('all'); setARoutes(new Set()); setADrivers(new Set()); setAVehicles(new Set()); setAFrom(''); setATo('')
     setApplied(false)
   }
 
   // full filtered result
   let filtered = applyPeriod(reports, aPeriod, aFrom, aTo)
-  if (aStatuses.size > 0) filtered = filtered.filter(r => aStatuses.has(r.status))
-  if (aRoutes.size  > 0) filtered = filtered.filter(r => aRoutes.has(r.route_number ?? '212'))
-  if (aDrivers.size > 0) filtered = filtered.filter(r => aDrivers.has(r.driver_name ?? 'Водитель'))
+  if (aStatuses.size  > 0) filtered = filtered.filter(r => aStatuses.has(r.status))
+  if (aRoutes.size    > 0) filtered = filtered.filter(r => aRoutes.has(r.route_number ?? '212'))
+  if (aDrivers.size   > 0) filtered = filtered.filter(r => aDrivers.has(r.driver_name ?? 'Водитель'))
+  if (aVehicles.size  > 0) filtered = filtered.filter(r => r.plate_number && aVehicles.has(r.plate_number))
 
   const sortByReviewed = (list: Report[]) =>
     [...list].sort((a, b) => {
@@ -164,7 +171,7 @@ export default function EntReports() {
   const displayPending  = applied ? filtered.filter(r => r.status === 'pending')                        : allPending.slice(0, 4)
   const displayReviewed = applied ? sortByReviewed(filtered.filter(r => r.status !== 'pending'))        : allReviewed.slice(0, 4)
   const isEmpty = applied && filtered.length === 0
-  const hasActive = applied && (aStatuses.size > 0 || aPeriod !== 'all' || aRoutes.size > 0 || aDrivers.size > 0)
+  const hasActive = applied && (aStatuses.size > 0 || aPeriod !== 'all' || aRoutes.size > 0 || aDrivers.size > 0 || aVehicles.size > 0)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const ReportCard = ({ r }: { r: Report }) => {
@@ -178,7 +185,7 @@ export default function EntReports() {
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>{r.driver_name ?? 'Водитель'}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
-            {fmtDate(r.shift_date)} · {r.route_number ?? '212'} · X264MP55
+            {fmtDate(r.shift_date)} · {r.route_number ?? '212'}{r.plate_number ? ` · ${r.plate_number}` : ''}
           </div>
         </div>
         {isAdjusted && <span style={{ fontSize: 10, fontWeight: 700, color: '#007AFF', background: '#EFF6FF', borderRadius: 20, padding: '2px 7px', flexShrink: 0 }}>корр.</span>}
@@ -323,6 +330,19 @@ export default function EntReports() {
                   {drivers.map(d => (
                     <Chip key={d} label={d} selected={dDrivers.has(d)}
                       onToggle={() => toggleSet(setDDrivers, d)} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* ТС */}
+            {vehicles.length > 0 && (
+              <>
+                <FilterLabel>ТС</FilterLabel>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                  {vehicles.map(p => (
+                    <Chip key={p} label={p} selected={dVehicles.has(p)}
+                      onToggle={() => toggleSet(setDVehicles, p)} />
                   ))}
                 </div>
               </>

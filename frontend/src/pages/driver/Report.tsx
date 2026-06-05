@@ -25,7 +25,7 @@ function Modal({ onClose, children }: { onClose: () => void; children: React.Rea
   return (
     <div
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
     >
       <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 24, padding: '32px 28px 28px', width: '100%', maxWidth: 320, position: 'relative', textAlign: 'center' }}>
         <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 18, background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#999', lineHeight: 1 }}>✕</button>
@@ -122,6 +122,7 @@ export default function DriverReport() {
     try {
       const res = await createReport({
         route_number: driverRoute || form.vehicle_plate || undefined,
+        plate_number: form.vehicle_plate || undefined,
         shift_date: new Date().toISOString().slice(0, 10),
         shift_start: '', shift_end: '',
         total_trips: Number(form.circles_count) || 0,
@@ -191,20 +192,25 @@ export default function DriverReport() {
         {/* Fields */}
         <div className="card">
           <FieldRow label="Номер смены:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}>
-            <input className="row-input" placeholder="Введите..." value={form.shift_number} onChange={e => set('shift_number', e.target.value)} />
+            <input className="row-input" placeholder="Введите..." value={form.shift_number} onChange={e => set('shift_number', e.target.value)}
+              style={{ color: form.shift_number ? 'var(--orange)' : undefined }} />
           </FieldRow>
           <FieldRow label="Гос. номер ТС:" icon={<img src="/bus.png" width="20" height="20" />}>
-            <input className="row-input" placeholder="Введите..." value={form.vehicle_plate} onChange={e => set('vehicle_plate', e.target.value)} />
+            <span className={form.vehicle_plate ? 'row-value' : 'row-value-gray'}>
+              {form.vehicle_plate || 'не назначен'}
+            </span>
           </FieldRow>
           <FieldRow label="Кол-во кругов:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></svg>}>
-            <input className="row-input" placeholder="Введите..." value={form.circles_count} onChange={e => set('circles_count', e.target.value)} type="number" />
+            <input className="row-input" placeholder="Введите..." value={form.circles_count} onChange={e => set('circles_count', e.target.value)} type="number"
+              style={{ color: form.circles_count ? 'var(--orange)' : undefined }} />
           </FieldRow>
           <FieldRow label="Кол-во карточек:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}>
-            <input className="row-input" value={form.cards_count} onChange={e => set('cards_count', e.target.value)} type="number" style={{ color: 'var(--orange-light)' }} />
+            <input className="row-input" placeholder="Введите..." value={form.cards_count} onChange={e => set('cards_count', e.target.value)} type="number"
+              style={{ color: form.cards_count ? 'var(--orange)' : undefined }} />
           </FieldRow>
           <FieldRow label="Состояние ТС:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}>
             <select value={form.vehicle_condition} onChange={e => set('vehicle_condition', e.target.value)}
-              style={{ border: 'none', background: 'transparent', fontSize: 15, fontFamily: 'inherit', cursor: 'pointer', color: form.vehicle_condition === 'Выберите' ? 'var(--text-muted)' : 'var(--text-primary)', textAlign: 'right' }}>
+              style={{ border: 'none', background: 'transparent', fontSize: 15, fontFamily: 'inherit', cursor: 'pointer', color: form.vehicle_condition === 'Выберите' ? 'var(--text-muted)' : 'var(--orange)', textAlign: 'right' }}>
               {CONDITIONS.map(c => <option key={c}>{c}</option>)}
             </select>
             <span className="row-arrow">›</span>

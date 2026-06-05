@@ -69,6 +69,13 @@ def update_driver(
         user.full_name = update.full_name
     if update.phone is not None:
         user.phone = update.phone or None
+    if update.driver_id is not None:
+        new_vu = update.driver_id.strip() or None
+        if new_vu and db.query(models.User).filter(
+            models.User.driver_id == new_vu, models.User.id != user.id
+        ).first():
+            raise HTTPException(409, "Водитель с таким номером ВУ уже существует")
+        user.driver_id = new_vu
     if update.plate_number is not None:
         user.vehicle_plate = update.plate_number or None
     if update.route_number is not None:

@@ -46,6 +46,7 @@ export interface Report {
   driver_id: number;
   driver_name?: string;
   route_number?: string;
+  plate_number?: string;
   shift_date: string;
   shift_start?: string;
   shift_end?: string;

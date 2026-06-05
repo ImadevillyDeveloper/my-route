@@ -39,6 +39,7 @@ class DriverCreate(BaseModel):
 class DriverUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
+    driver_id: Optional[str] = None
     plate_number: Optional[str] = None  # "" — снять ТС, иначе назначить
     route_number: Optional[str] = None  # "" — снять маршрут, иначе назначить
 
@@ -126,6 +127,7 @@ class RecommendationOut(BaseModel):
 # Reports
 class ReportCreate(BaseModel):
     route_number: Optional[str] = None
+    plate_number: Optional[str] = None
     shift_date: date
     shift_start: Optional[str] = None
     shift_end: Optional[str] = None
@@ -139,6 +141,7 @@ class ReportOut(BaseModel):
     id: int
     driver_id: int
     route_number: Optional[str] = None
+    plate_number: Optional[str] = None
     shift_date: date
     shift_start: Optional[str] = None
     shift_end: Optional[str] = None
@@ -219,6 +222,7 @@ class VehicleUpdate(BaseModel):
     plate_number: Optional[str] = None
     model: Optional[str] = None
     year: Optional[int] = None
+    route_number: Optional[str] = None
 
 
 class VehicleOut(BaseModel):

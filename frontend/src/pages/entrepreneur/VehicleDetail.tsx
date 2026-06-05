@@ -113,14 +113,7 @@ export default function EntVehicleDetail() {
   const [v, setV] = useState<any>(null)
   const navigate = useNavigate()
   const parkName = toParkName(useAuthStore(s => s.fullName))
-  const storageKey = `vehicle_extra_${id}`
-
-  const [data, setData] = useState<typeof VEHICLE_DEFAULTS>(() => {
-    try {
-      const saved = localStorage.getItem(`vehicle_extra_${id}`)
-      return saved ? { ...VEHICLE_DEFAULTS, ...JSON.parse(saved) } : { ...VEHICLE_DEFAULTS }
-    } catch { return { ...VEHICLE_DEFAULTS } }
-  })
+  const [data, setData] = useState<typeof VEHICLE_DEFAULTS>({ ...VEHICLE_DEFAULTS })
 
   const [dropOpen, setDropOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, right: 0 })
@@ -191,23 +184,30 @@ export default function EntVehicleDetail() {
   }, [routeDropOpen])
 
   const changeRoute = async (newRoute: string) => {
+    console.log('[changeRoute] called', newRoute, 'current:', v?.route_number)
     setRouteDropOpen(false)
-    if (!id || newRoute === v?.route_number) return
-    // Обновляем ТС
-    await apiUpdateVehicle(Number(id), { route_number: newRoute }).catch(() => {})
+    if (!id || newRoute === (v?.route_number ?? '')) {
+      console.log('[changeRoute] early return — same route or no id')
+      return
+    }
+    const prevRoute = v?.route_number ?? null
     setV((prev: any) => prev ? { ...prev, route_number: newRoute } : prev)
-    // Синхронизируем маршрут у всех водителей этого ТС
-    const assigned = allDrivers.filter((d: any) => d.plate_number === v?.plate_number)
-    await Promise.all(assigned.map(d => updateDriver(d.id, { route_number: newRoute }).catch(() => {})))
-    setAllDrivers(prev => prev.map((d: any) =>
-      assigned.some(ad => ad.id === d.id) ? { ...d, route_number: newRoute } : d
-    ))
+    try {
+      const res = await apiUpdateVehicle(Number(id), { route_number: newRoute })
+      console.log('[changeRoute] API response:', res.data)
+      setV(res.data)
+      const assigned = allDrivers.filter((d: any) => d.plate_number === v?.plate_number)
+      await Promise.all(assigned.map((d: any) => updateDriver(d.id, { route_number: newRoute }).catch(() => {})))
+      setAllDrivers(prev => prev.map((d: any) =>
+        assigned.some((ad: any) => ad.id === d.id) ? { ...d, route_number: newRoute } : d
+      ))
+    } catch (e) {
+      console.error('[changeRoute] API failed:', e)
+      setV((prev: any) => prev ? { ...prev, route_number: prevRoute } : prev)
+    }
   }
 
-  const saveData = (next: typeof VEHICLE_DEFAULTS) => {
-    setData(next)
-    try { localStorage.setItem(storageKey, JSON.stringify(next)) } catch {}
-  }
+  const saveData = (next: typeof VEHICLE_DEFAULTS) => setData(next)
 
   const set = (k: keyof Omit<typeof VEHICLE_DEFAULTS, 'driverIds'>) => (val: string) => {
     saveData({ ...data, [k]: val })
@@ -378,7 +378,7 @@ export default function EntVehicleDetail() {
       </div>
 
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
+        <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
           <div style={{ background: 'white', borderRadius: 24, padding: '28px 24px', width: '100%', maxWidth: 320, textAlign: 'center' }}>
             <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#FFF0EF', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
