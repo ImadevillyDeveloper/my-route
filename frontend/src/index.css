@@ -299,11 +299,12 @@ input, textarea, select { font-family: inherit; outline: none; }
 .sidebar-nav { display: none; }
 .layout-root  { min-height: 100dvh; }
 
-/* ── Desktop layout (≥ 768px) ── */
-@media (min-width: 768px) {
+/* ── Desktop layout (≥ 640px) ── */
+@media (min-width: 640px) {
   #root {
     max-width: 100%;
     margin: 0;
+    overflow-x: visible;
   }
 
   .layout-root {
