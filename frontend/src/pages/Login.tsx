@@ -125,7 +125,15 @@ export default function Login() {
           </div>
 
           <div style={{ position: 'relative', marginBottom: 10 }}>
-            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#bbb' }}>🪪</span>
+            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1" y="4" width="18" height="12" rx="2" stroke="#CCCCCC" strokeWidth="1.5"/>
+                <rect x="3.5" y="7" width="4" height="3" rx="0.8" stroke="#CCCCCC" strokeWidth="1.2"/>
+                <line x1="9.5" y1="8" x2="16.5" y2="8" stroke="#CCCCCC" strokeWidth="1.2" strokeLinecap="round"/>
+                <line x1="9.5" y1="11" x2="14.5" y2="11" stroke="#CCCCCC" strokeWidth="1.2" strokeLinecap="round"/>
+                <line x1="3.5" y1="13.5" x2="16.5" y2="13.5" stroke="#CCCCCC" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            </span>
             <input
               className="form-input"
               placeholder="Номер ВУ"
