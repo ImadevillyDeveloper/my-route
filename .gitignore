@@ -32,6 +32,7 @@ frontend/build/
 # Скриншоты и дизайн
 screenshots/
 *.png
+!frontend/public/*.png
 design_ent/
 design_pages/
 
