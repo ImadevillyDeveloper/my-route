@@ -133,6 +133,13 @@ def update_vehicle(
         v.model = update.model
     if update.year is not None:
         v.year = update.year
+    if update.route_number is not None:
+        if update.route_number == '':
+            v.route_id = None
+        else:
+            route = db.query(models.Route).filter(models.Route.number == update.route_number).first()
+            if route:
+                v.route_id = route.id
     db.commit()
     db.refresh(v)
     return _vehicle_out(v, db)
