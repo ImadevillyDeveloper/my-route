@@ -5,8 +5,10 @@ import threading
 import time
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
+from ..database import get_db
 
 try:
     import json as _json
@@ -35,8 +37,11 @@ _session: dict    = {"sid": None, "exp": 0.0}
 _req_id: list     = [1]
 _live_cache: dict = {"vehicles": [], "ts": 0.0}
 _cache_lock       = threading.Lock()
-_CACHE_TTL        = 30   # seconds — consumers always get cached data
-_REFRESH_INTERVAL = 25   # background thread refreshes before TTL expires
+_CACHE_TTL        = 30
+_REFRESH_INTERVAL = 25
+
+_route_stops_cache: dict = {}  # mr_id -> {A: [stops], B: [stops], A_dest: str, B_dest: str}
+_mr_id_cache: dict       = {}  # route_number -> mr_id
 
 
 def _ts() -> int:
@@ -81,6 +86,21 @@ def _get_sid() -> Optional[str]:
     return _session["sid"]
 
 
+def _navitrans_call(method: str, params: dict) -> dict:
+    """Make a single authenticated Navitrans RPC call."""
+    sid = _get_sid()
+    if not sid:
+        return {}
+    rid = _next_id()
+    url, magic = _sign(method, rid, sid)
+    r = http_req.post(url, headers=BUS55_HEADERS, json={
+        "jsonrpc": BUS55_RPC, "method": method,
+        "ts": _ts(), "id": rid,
+        "params": {"sid": sid, "magic": magic, **params},
+    }, timeout=8)
+    return _json.loads(r.content.decode("utf-8", errors="replace"))
+
+
 def _fetch_all_units() -> list[dict]:
     """Fetch all active vehicles from bus-55.ru in the Omsk bounding box."""
     if not _HAS_REQUESTS:
@@ -102,7 +122,6 @@ def _fetch_all_units() -> list[dict]:
                     "minlong": 73.10, "maxlong": 73.70,
                 },
             }, timeout=8)
-            # Always decode as UTF-8 regardless of what the server claims in Content-Type
             data = _json.loads(r.content.decode("utf-8", errors="replace"))
 
             if "error" in data:
@@ -130,11 +149,9 @@ def _fetch_all_units() -> list[dict]:
 
 
 def _get_cached_units() -> list[dict]:
-    """Return cached vehicle list. Background thread keeps cache warm — no blocking wait."""
     with _cache_lock:
         if _live_cache["vehicles"]:
             return list(_live_cache["vehicles"])
-    # Cache is empty (first startup) — fetch synchronously once
     vehicles = _fetch_all_units()
     with _cache_lock:
         _live_cache["vehicles"] = vehicles
@@ -143,8 +160,7 @@ def _get_cached_units() -> list[dict]:
 
 
 def _background_refresh() -> None:
-    """Daemon thread: keeps Navitrans cache warm, refreshing every _REFRESH_INTERVAL seconds."""
-    time.sleep(5)  # let the app fully start before first fetch
+    time.sleep(5)
     while True:
         try:
             vehicles = _fetch_all_units()
@@ -157,9 +173,118 @@ def _background_refresh() -> None:
         time.sleep(_REFRESH_INTERVAL)
 
 
-# Start background refresh daemon on module load
 _refresh_thread = threading.Thread(target=_background_refresh, daemon=True)
 _refresh_thread.start()
+
+
+# ── Direction mapping helpers ──────────────────────────────────────
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6_371_000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _find_mr_id(route_number: str) -> Optional[str]:
+    if route_number in _mr_id_cache:
+        return _mr_id_cache[route_number]
+    for v in _get_cached_units():
+        if str(v.get("mr_num", "")) == route_number:
+            mid = str(v.get("mr_id", ""))
+            if mid:
+                _mr_id_cache[route_number] = mid
+                return mid
+    return None
+
+
+def _fetch_route_stops(mr_id: str) -> dict:
+    """Returns {A: [stops], B: [stops], A_dest: str, B_dest: str}."""
+    if mr_id in _route_stops_cache:
+        return _route_stops_cache[mr_id]
+    try:
+        data = _navitrans_call("getRoute", {"mr_id": mr_id})
+        races = data.get("result", {}).get("races", [])
+        result: dict = {}
+        for race in races:
+            rt = race.get("rl_racetype", "")
+            if not rt:
+                continue
+            result[rt] = [
+                {"st_lat": float(s["st_lat"]), "st_lng": float(s["st_long"])}
+                for s in race.get("stopList", [])
+                if s.get("st_lat") and s.get("st_long")
+            ]
+            result[rt + "_dest"] = race.get("rl_laststation", "").strip()
+        _route_stops_cache[mr_id] = result
+        return result
+    except Exception:
+        return {}
+
+
+def _count_ordered_common_stops(stops_a: list, stops_b: list, threshold_m: float = 80.0) -> int:
+    """Count stops common to both lists that appear in the same order (same direction)."""
+    matches: list[tuple[int, int]] = []
+    for i, sa in enumerate(stops_a):
+        for j, sb in enumerate(stops_b):
+            if _haversine_m(sa["st_lat"], sa["st_lng"], sb["st_lat"], sb["st_lng"]) < threshold_m:
+                matches.append((i, j))
+                break
+    if len(matches) < 2:
+        return len(matches)
+    j_seq = [m[1] for m in matches]
+    in_order = sum(1 for k in range(len(j_seq) - 1) if j_seq[k] < j_seq[k + 1])
+    # Majority vote: more than half of consecutive pairs must be increasing
+    return len(matches) if in_order > (len(j_seq) - 1) / 2 else 0
+
+
+def _compute_and_save_mapping(our_route: str, comp_route: str, db: Session) -> int:
+    """Compute stop-sequence direction mapping and upsert to DB. Returns pairs saved."""
+    our_mr_id  = _find_mr_id(our_route)
+    comp_mr_id = _find_mr_id(comp_route)
+    if not our_mr_id or not comp_mr_id:
+        return 0
+
+    _route_stops_cache.pop(our_mr_id, None)
+    _route_stops_cache.pop(comp_mr_id, None)
+
+    our_stops  = _fetch_route_stops(our_mr_id)
+    comp_stops = _fetch_route_stops(comp_mr_id)
+
+    saved = 0
+    for our_rt in ("A", "B"):
+        our_list = our_stops.get(our_rt, [])
+        our_dest = our_stops.get(our_rt + "_dest", "")
+        if not our_list or not our_dest:
+            continue
+        for comp_rt in ("A", "B"):
+            comp_list = comp_stops.get(comp_rt, [])
+            comp_dest = comp_stops.get(comp_rt + "_dest", "")
+            if not comp_list or not comp_dest:
+                continue
+            count = _count_ordered_common_stops(our_list, comp_list)
+            if count >= 3:
+                existing = db.query(models.CompetitorDirectionMap).filter_by(
+                    our_route_number=our_route,
+                    our_destination=our_dest,
+                    competitor_route_number=comp_route,
+                ).first()
+                if existing:
+                    existing.competitor_destination = comp_dest
+                    existing.common_stop_count = count
+                else:
+                    db.add(models.CompetitorDirectionMap(
+                        our_route_number=our_route,
+                        our_destination=our_dest,
+                        competitor_route_number=comp_route,
+                        competitor_destination=comp_dest,
+                        common_stop_count=count,
+                    ))
+                saved += 1
+    db.commit()
+    return saved
 
 
 # ── Fallback mock ─────────────────────────────────────────────────
@@ -176,29 +301,60 @@ def _random_coord(lat: float, lng: float, r: float = 0.05):
 
 @router.get("/position", response_model=schemas.PositionOut)
 def get_position(current_user: models.User = Depends(get_current_user)):
-    # Зафиксировано: Театральная площадь, направление → СТЦ Мега (запад)
     return schemas.PositionOut(lat=54.9894, lng=73.3780, speed=34.0)
+
+
+@router.post("/competitor-mapping")
+def compute_competitor_mapping(
+    our_route: str = Query(...),
+    competitor_route: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Compute and save stop-sequence direction mapping for a competitor route."""
+    saved = _compute_and_save_mapping(our_route, competitor_route, db)
+    return {"saved_pairs": saved, "our_route": our_route, "competitor_route": competitor_route}
 
 
 @router.get("/rivals/live", response_model=list[schemas.RivalOut])
 def get_rivals_live(
     routes: str = Query(default=""),
+    our_route: str = Query(default=""),
+    our_destination: str = Query(default=""),
+    db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Real-time rival vehicles from bus-55.ru (Navitrans), filtered by route numbers."""
+    """Real-time rival vehicles from Navitrans, filtered by route and direction mapping."""
     route_list = [r.strip() for r in routes.split(",") if r.strip()]
     if not route_list:
         return []
 
     route_set = set(route_list)
     all_vehicles = _get_cached_units()
-    result: list[schemas.RivalOut] = []
 
+    # Build direction filter from DB
+    allowed: dict[str, set[str]] = {}  # competitor_route -> set of allowed rl_laststation_title values
+    if our_route and our_destination:
+        mappings = db.query(models.CompetitorDirectionMap).filter_by(
+            our_route_number=our_route,
+            our_destination=our_destination,
+        ).all()
+        for m in mappings:
+            allowed.setdefault(m.competitor_route_number, set()).add(m.competitor_destination)
+
+    result: list[schemas.RivalOut] = []
     for i, v in enumerate(all_vehicles):
         try:
             mr_num = str(v.get("mr_num", ""))
             if mr_num not in route_set:
                 continue
+
+            # Direction filter: only apply when we have a mapping for this route
+            if allowed and mr_num in allowed:
+                last_station = str(v.get("rl_laststation_title", "") or "").strip()
+                if last_station not in allowed[mr_num]:
+                    continue
+
             lat = float(v.get("u_lat", 0) or 0)
             lng = float(v.get("u_long", 0) or 0)
             if not lat or not lng:

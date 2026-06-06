@@ -45,8 +45,14 @@ export const updateMe = (data: object) => api.put('/users/me', data);
 export const getPosition = () => api.get('/tracking/position');
 export const getRivals = (direction?: string) =>
   api.get('/tracking/rivals', { params: direction ? { direction } : {} });
-export const getRivalsLive = (routes: string[]) =>
-  api.get('/tracking/rivals/live', { params: { routes: routes.join(',') } });
+export const getRivalsLive = (routes: string[], ourRoute?: string, ourDestination?: string) => {
+  const params: Record<string, string> = { routes: routes.join(',') }
+  if (ourRoute) params.our_route = ourRoute
+  if (ourDestination) params.our_destination = ourDestination
+  return api.get('/tracking/rivals/live', { params })
+}
+export const computeCompetitorMapping = (ourRoute: string, competitorRoute: string) =>
+  api.post('/tracking/competitor-mapping', null, { params: { our_route: ourRoute, competitor_route: competitorRoute } })
 export const requestRecommendation = (direction: string) =>
   api.post('/tracking/request', { direction });
 

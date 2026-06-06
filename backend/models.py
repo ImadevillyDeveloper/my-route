@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, Enum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -155,6 +155,22 @@ class Insurance(Base):
     reminder_enabled = Column(Boolean, default=True)
 
     vehicle = relationship("Vehicle", back_populates="insurance")
+
+
+class CompetitorDirectionMap(Base):
+    __tablename__ = "competitor_direction_map"
+
+    id = Column(Integer, primary_key=True, index=True)
+    our_route_number = Column(String, nullable=False, index=True)
+    our_destination = Column(String, nullable=False)
+    competitor_route_number = Column(String, nullable=False)
+    competitor_destination = Column(String, nullable=False)
+    common_stop_count = Column(Integer, default=0)
+
+    __table_args__ = (
+        UniqueConstraint('our_route_number', 'our_destination', 'competitor_route_number',
+                         name='uq_competitor_direction'),
+    )
 
 
 class Salary(Base):
