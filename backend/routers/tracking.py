@@ -188,7 +188,7 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def _find_mr_id(route_number: str) -> Optional[str]:
+def _find_mr_id(route_number: str, db: Optional[Session] = None) -> Optional[str]:
     if route_number in _mr_id_cache:
         return _mr_id_cache[route_number]
     for v in _get_cached_units():
@@ -197,13 +197,25 @@ def _find_mr_id(route_number: str) -> Optional[str]:
             if mid:
                 _mr_id_cache[route_number] = mid
                 return mid
+    if db:
+        row = db.query(models.RouteNavitransId).filter_by(route_number=route_number).first()
+        if row:
+            _mr_id_cache[route_number] = row.mr_id
+            return row.mr_id
     return None
 
 
-def _fetch_route_stops(mr_id: str) -> dict:
-    """Returns {A: [stops], B: [stops], A_dest: str, B_dest: str}."""
+def _fetch_route_stops(mr_id: str, route_number: str = "", db: Optional[Session] = None) -> dict:
+    """Returns {A: [stops], B: [stops], A_dest: str, B_dest: str}. Persists to DB."""
     if mr_id in _route_stops_cache:
         return _route_stops_cache[mr_id]
+    if db:
+        row = db.query(models.RouteStopList).filter_by(mr_id=mr_id).first()
+        if row:
+            import json as _j
+            data = _j.loads(row.stops_json)
+            _route_stops_cache[mr_id] = data
+            return data
     try:
         data = _navitrans_call("getRoute", {"mr_id": mr_id})
         races = data.get("result", {}).get("races", [])
@@ -219,6 +231,17 @@ def _fetch_route_stops(mr_id: str) -> dict:
             ]
             result[rt + "_dest"] = race.get("rl_laststation", "").strip()
         _route_stops_cache[mr_id] = result
+        if db and result:
+            import json as _j
+            existing = db.query(models.RouteStopList).filter_by(mr_id=mr_id).first()
+            if existing:
+                existing.stops_json = _j.dumps(result, ensure_ascii=False)
+            else:
+                db.add(models.RouteStopList(
+                    mr_id=mr_id, route_number=route_number,
+                    stops_json=_j.dumps(result, ensure_ascii=False)
+                ))
+            db.commit()
         return result
     except Exception:
         return {}
@@ -242,16 +265,16 @@ def _count_ordered_common_stops(stops_a: list, stops_b: list, threshold_m: float
 
 def _compute_and_save_mapping(our_route: str, comp_route: str, db: Session) -> int:
     """Compute stop-sequence direction mapping and upsert to DB. Returns pairs saved."""
-    our_mr_id  = _find_mr_id(our_route)
-    comp_mr_id = _find_mr_id(comp_route)
+    our_mr_id  = _find_mr_id(our_route, db)
+    comp_mr_id = _find_mr_id(comp_route, db)
     if not our_mr_id or not comp_mr_id:
         return 0
 
     _route_stops_cache.pop(our_mr_id, None)
     _route_stops_cache.pop(comp_mr_id, None)
 
-    our_stops  = _fetch_route_stops(our_mr_id)
-    comp_stops = _fetch_route_stops(comp_mr_id)
+    our_stops  = _fetch_route_stops(our_mr_id, our_route, db)
+    comp_stops = _fetch_route_stops(comp_mr_id, comp_route, db)
 
     saved = 0
     for our_rt in ("A", "B"):
@@ -304,6 +327,28 @@ def get_position(current_user: models.User = Depends(get_current_user)):
     return schemas.PositionOut(lat=54.9894, lng=73.3780, speed=34.0)
 
 
+def _refresh_and_persist_mr_ids(db: Session) -> None:
+    """Force a fresh Navitrans fetch and persist all discovered route->mr_id pairs to DB."""
+    vehicles = _fetch_all_units()
+    if not vehicles:
+        return
+    with _cache_lock:
+        _live_cache["vehicles"] = vehicles
+        _live_cache["ts"] = time.time()
+    for v in vehicles:
+        mr_num = str(v.get("mr_num", "")).strip()
+        mr_id  = str(v.get("mr_id",  "")).strip()
+        if not mr_num or not mr_id:
+            continue
+        _mr_id_cache[mr_num] = mr_id
+        existing = db.query(models.RouteNavitransId).filter_by(route_number=mr_num).first()
+        if existing:
+            existing.mr_id = mr_id
+        else:
+            db.add(models.RouteNavitransId(route_number=mr_num, mr_id=mr_id))
+    db.commit()
+
+
 @router.post("/competitor-mapping")
 def compute_competitor_mapping(
     our_route: str = Query(...),
@@ -312,6 +357,7 @@ def compute_competitor_mapping(
     current_user: models.User = Depends(get_current_user),
 ):
     """Compute and save stop-sequence direction mapping for a competitor route."""
+    _refresh_and_persist_mr_ids(db)
     saved = _compute_and_save_mapping(our_route, competitor_route, db)
     return {"saved_pairs": saved, "our_route": our_route, "competitor_route": competitor_route}
 
@@ -331,6 +377,20 @@ def get_rivals_live(
 
     route_set = set(route_list)
     all_vehicles = _get_cached_units()
+
+    # Passively persist any newly discovered mr_ids to DB
+    new_mr_ids = [
+        (str(v.get("mr_num", "")).strip(), str(v.get("mr_id", "")).strip())
+        for v in all_vehicles
+        if str(v.get("mr_num", "")).strip() and str(v.get("mr_id", "")).strip()
+           and str(v.get("mr_num", "")).strip() not in _mr_id_cache
+    ]
+    if new_mr_ids:
+        for mr_num, mr_id in new_mr_ids:
+            _mr_id_cache[mr_num] = mr_id
+            if not db.query(models.RouteNavitransId).filter_by(route_number=mr_num).first():
+                db.add(models.RouteNavitransId(route_number=mr_num, mr_id=mr_id))
+        db.commit()
 
     # Build direction filter from DB
     # allowed: routes with a positive direction match -> set of rl_laststation_title values to show

@@ -22,10 +22,13 @@ with engine.connect() as conn:
     _add_col(conn, "routes",    "owner_id",       "INTEGER")
     _add_col(conn, "vehicles",  "owner_id",       "INTEGER")
     _add_col(conn, "insurance", "kasko_end_date", "DATE")
-    _add_col(conn, "users",        "vehicle_plate",  "VARCHAR")
-    _add_col(conn, "users",        "route_number",   "VARCHAR")
-    _add_col(conn, "vehicles",     "avatar_url",     "VARCHAR")
-    _add_col(conn, "maintenance",  "reminders_json", "TEXT")
+    _add_col(conn, "users",        "vehicle_plate",     "VARCHAR")
+    _add_col(conn, "users",        "route_number",      "VARCHAR")
+    _add_col(conn, "users",        "rival_routes_json", "TEXT")
+    _add_col(conn, "users",        "active_shift_start","VARCHAR")
+    _add_col(conn, "users",        "active_direction",  "VARCHAR")
+    _add_col(conn, "vehicles",     "avatar_url",        "VARCHAR")
+    _add_col(conn, "maintenance",  "reminders_json",    "TEXT")
 
 # Seed demo drivers by ВУ number if they don't exist yet
 def _seed_demo_drivers():

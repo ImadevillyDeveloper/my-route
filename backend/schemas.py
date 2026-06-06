@@ -84,6 +84,9 @@ class UserOut(BaseModel):
     avatar_url: Optional[str] = None
     vehicle_plate: Optional[str] = None
     route_number: Optional[str] = None
+    rival_routes_json: Optional[str] = None
+    active_shift_start: Optional[str] = None
+    active_direction: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -93,6 +96,9 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     biometric_enabled: Optional[bool] = None
     avatar_url: Optional[str] = None
+    rival_routes_json: Optional[str] = None
+    active_shift_start: Optional[str] = None
+    active_direction: Optional[str] = None
 
 
 # Tracking

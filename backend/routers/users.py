@@ -43,6 +43,12 @@ def update_me(
         current_user.biometric_enabled = update.biometric_enabled
     if update.avatar_url is not None:
         current_user.avatar_url = update.avatar_url
+    if update.rival_routes_json is not None:
+        current_user.rival_routes_json = update.rival_routes_json
+    if update.active_shift_start is not None:
+        current_user.active_shift_start = update.active_shift_start
+    if update.active_direction is not None:
+        current_user.active_direction = update.active_direction
     db.commit()
     db.refresh(current_user)
     return current_user

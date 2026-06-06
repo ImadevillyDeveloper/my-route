@@ -41,6 +41,9 @@ class User(Base):
     avatar_url = Column(String, nullable=True)
     vehicle_plate = Column(String, nullable=True)   # назначенное ТС (много водителей → одно ТС)
     route_number  = Column(String, nullable=True)   # назначенный маршрут (прямое поле)
+    rival_routes_json  = Column(Text, nullable=True)    # JSON-массив конкурентных маршрутов
+    active_shift_start = Column(String, nullable=True)  # ISO datetime начала активной смены
+    active_direction   = Column(String, nullable=True)  # "forward" | "back"
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -155,6 +158,22 @@ class Insurance(Base):
     reminder_enabled = Column(Boolean, default=True)
 
     vehicle = relationship("Vehicle", back_populates="insurance")
+
+
+class RouteNavitransId(Base):
+    __tablename__ = "route_navitrans_ids"
+
+    route_number = Column(String, primary_key=True)
+    mr_id = Column(String, nullable=False)
+
+
+class RouteStopList(Base):
+    __tablename__ = "route_stop_lists"
+
+    mr_id = Column(String, primary_key=True)
+    route_number = Column(String, nullable=False, index=True)
+    stops_json = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class CompetitorDirectionMap(Base):

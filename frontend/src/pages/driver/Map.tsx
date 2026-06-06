@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes } from '../../api/client'
+import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
 declare global { interface Window { ymaps: any } }
 
-const RIVAL_ROUTES_KEY = 'driver_rival_routes'
-const SHIFT_START_KEY  = 'driver_shift_start'
 const OMSK_LAT = 54.9885
 const OMSK_LNG = 73.3242
 
@@ -83,8 +81,8 @@ export default function DriverMap() {
   const [driverRoute, setDriverRoute]   = useState('—')
   const [driverInfo, setDriverInfo]     = useState<any>(null)
   const [routeTerminals, setRouteTerminals] = useState<{ start: string; end: string } | null>(null)
-  const [direction, setDirection]       = useState<'forward' | 'back'>(() => (localStorage.getItem('driver_direction') as any) || 'forward')
-  const [shiftStarted, setShiftStarted] = useState(() => !!localStorage.getItem(SHIFT_START_KEY))
+  const [direction, setDirection]       = useState<'forward' | 'back'>('forward')
+  const [shiftStarted, setShiftStarted] = useState(false)
   const [navDriverPos, setNavDriverPos] = useState<{ lat: number; lng: number; speed: number } | null>(null)
   const [isNavTracked, setIsNavTracked] = useState(false)
   const [navDirection, setNavDirection] = useState<string | null>(null)
@@ -93,9 +91,8 @@ export default function DriverMap() {
   const driverRouteRef   = useRef('—')
   const wasNavTracked    = useRef<boolean | null>(null)
   const toastTimer       = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [rivals2, setRivals2] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(RIVAL_ROUTES_KEY) || '[]') } catch { return [] }
-  })
+  const [rivals2, setRivals2] = useState<string[]>([])
+  const [userLoaded, setUserLoaded] = useState(false)
   const [rivalInput, setRivalInput]   = useState('')
   const [rivalDropOpen, setRivalDropOpen] = useState(false)
   const [rivalDropPos, setRivalDropPos]   = useState({ top: 0, left: 0, width: 0 })
@@ -104,7 +101,8 @@ export default function DriverMap() {
 
   useEffect(() => {
     getMe().then(r => {
-      const route = r.data.route_number
+      const u = r.data
+      const route = u.route_number
       if (route) {
         setDriverRoute(route)
         getRoutes().then(rr => {
@@ -114,18 +112,26 @@ export default function DriverMap() {
           }
         }).catch(() => {})
       }
-      setDriverInfo(r.data)
-    }).catch(() => {})
+      setDriverInfo(u)
+      if (u.active_shift_start) setShiftStarted(true)
+      if (u.active_direction === 'forward' || u.active_direction === 'back') setDirection(u.active_direction)
+      try {
+        const savedRivals: string[] = u.rival_routes_json ? JSON.parse(u.rival_routes_json) : []
+        setRivals2(savedRivals)
+      } catch {}
+      setUserLoaded(true)
+    }).catch(() => { setUserLoaded(true) })
   }, [])
 
   const startShift = () => {
-    localStorage.setItem(SHIFT_START_KEY, new Date().toISOString())
+    const now = new Date().toISOString()
     setShiftStarted(true)
+    updateMe({ active_shift_start: now }).catch(() => {})
   }
 
   const switchDirection = (d: 'forward' | 'back') => {
     setDirection(d)
-    localStorage.setItem('driver_direction', d)
+    updateMe({ active_direction: d }).catch(() => {})
   }
 
   const dirLabel = (d: 'forward' | 'back') => {
@@ -136,10 +142,10 @@ export default function DriverMap() {
   const shortLabel = (s: string) => s.length > 16 ? s.slice(0, 15) + '…' : s
 
   useEffect(() => {
-    if (shiftStarted) return
-    localStorage.setItem(RIVAL_ROUTES_KEY, JSON.stringify(rivals2))
+    if (!userLoaded) return
+    updateMe({ rival_routes_json: JSON.stringify(rivals2) }).catch(() => {})
     window.dispatchEvent(new CustomEvent('rival-routes-changed'))
-  }, [rivals2, shiftStarted])
+  }, [rivals2, userLoaded])
 
   useEffect(() => {
     if (!rivalDropOpen) return
@@ -240,7 +246,7 @@ export default function DriverMap() {
           const dest = (myVeh.direction as string).split(' → ')[1]?.trim() ?? ''
           const d = dest.toLowerCase().includes(routeTerminals.end.toLowerCase().slice(0, 6)) ? 'forward' : 'back'
           setDirection(d)
-          localStorage.setItem('driver_direction', d)
+          updateMe({ active_direction: d }).catch(() => {})
         }
       } catch {
         if (wasNavTracked.current !== false) {
@@ -283,11 +289,10 @@ export default function DriverMap() {
   // ── Загрузка и поллинг конкурентов (10 с) ──────────────────────
   const loadAndFetch = useCallback(async () => {
     try {
-      const saved: string[] = JSON.parse(localStorage.getItem(RIVAL_ROUTES_KEY) || '[]')
-      setRivalRoutes(saved)
-      if (saved.length === 0) { setRivals([]); return }
+      setRivalRoutes(rivals2)
+      if (rivals2.length === 0) { setRivals([]); return }
       const ourDest = direction === 'forward' ? (routeTerminals?.end ?? '') : (routeTerminals?.start ?? '')
-      const res = await getRivalsLive(saved, driverRoute !== '—' ? driverRoute : undefined, ourDest || undefined)
+      const res = await getRivalsLive(rivals2, driverRoute !== '—' ? driverRoute : undefined, ourDest || undefined)
       setRivals(res.data)
       setLiveError(false)
     } catch {

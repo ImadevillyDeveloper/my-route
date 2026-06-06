@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
-import { sendSupport } from '../../api/client'
+import { sendSupport, getMe, updateMe, computeCompetitorMapping } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 
 const TOPICS = [
@@ -36,13 +36,11 @@ const OMSK_ROUTES: { type: string; routes: string[] }[] = [
 ]
 
 const ALL_ROUTES = OMSK_ROUTES.flatMap(g => g.routes)
-const STORAGE_KEY = 'driver_rival_routes'
 
 export default function DriverSettings() {
   const [voiceOn, setVoiceOn] = useState(true)
-  const [rivals, setRivals] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
-  })
+  const [rivals, setRivals] = useState<string[]>([])
+  const [userLoaded, setUserLoaded] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const [dropOpen, setDropOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
@@ -56,8 +54,20 @@ export default function DriverSettings() {
   const [sending, setSending]           = useState(false)
   const [sent, setSent]                 = useState(false)
   const [sendError, setSendError]       = useState('')
+  const [driverRoute, setDriverRoute] = useState('')
   const navigate = useNavigate()
   const logout = useAuthStore(s => s.logout)
+
+  useEffect(() => {
+    getMe().then(r => {
+      if (r.data.route_number) setDriverRoute(r.data.route_number)
+      try {
+        const saved: string[] = r.data.rival_routes_json ? JSON.parse(r.data.rival_routes_json) : []
+        setRivals(saved)
+      } catch {}
+      setUserLoaded(true)
+    }).catch(() => { setUserLoaded(true) })
+  }, [])
 
   const openSupport = () => {
     setTopic('bug'); setMessage(''); setContact(''); setSent(false); setSendError('')
@@ -75,15 +85,19 @@ export default function DriverSettings() {
   }
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rivals))
+    if (!userLoaded) return
+    updateMe({ rival_routes_json: JSON.stringify(rivals) }).catch(() => {})
     window.dispatchEvent(new CustomEvent('rival-routes-changed'))
-  }, [rivals])
+  }, [rivals, userLoaded])
 
   const toggle = (r: string) =>
     setRivals(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r])
 
   const addRoute = (r: string) => {
-    if (!rivals.includes(r)) setRivals(prev => [...prev, r])
+    if (!rivals.includes(r)) {
+      setRivals(prev => [...prev, r])
+      if (driverRoute) computeCompetitorMapping(driverRoute, r).catch(() => {})
+    }
     setInputValue('')
     setDropOpen(false)
     inputRef.current?.focus()

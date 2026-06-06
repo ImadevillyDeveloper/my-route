@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { scanReceipt, createReport, getMe } from '../../api/client'
+import { scanReceipt, createReport, getMe, updateMe } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 
 interface Form {
@@ -44,8 +44,6 @@ const Sparkles = () => (
   </>
 )
 
-const SHIFT_START_KEY = 'driver_shift_start'
-
 const fmtTime = (iso: string) => {
   if (!iso) return ''
   const d = new Date(iso)
@@ -59,7 +57,7 @@ export default function DriverReport() {
   const [showSuccess, setShowSuccess] = useState(false)
   const [showError, setShowError] = useState(false)
   const [createdId, setCreatedId] = useState<number | null>(null)
-  const [shiftStartTime] = useState(() => fmtTime(localStorage.getItem(SHIFT_START_KEY) || ''))
+  const [shiftStartTime, setShiftStartTime] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -80,6 +78,7 @@ export default function DriverReport() {
       const route = r.data.route_number  || ''
       setDriverRoute(route)
       setForm(p => ({ ...p, vehicle_plate: plate }))
+      if (r.data.active_shift_start) setShiftStartTime(fmtTime(r.data.active_shift_start))
     }).catch(() => {})
   }, [])
 
@@ -140,7 +139,7 @@ export default function DriverReport() {
         notes: `Гос.номер: ${form.vehicle_plate}, Маршрут: ${driverRoute}, Смена: ${form.shift_number}, Выход: ${shiftStartTime || '—'}, Кругов: ${form.circles_count}, Карточек: ${form.cards_count}, ТС: ${form.vehicle_condition}`,
       })
       if (res.data?.id) setCreatedId(res.data.id)
-      localStorage.removeItem(SHIFT_START_KEY)
+      updateMe({ active_shift_start: '' }).catch(() => {})
     } catch {}
     finally { setSubmitting(false) }
     setShowSuccess(true)
