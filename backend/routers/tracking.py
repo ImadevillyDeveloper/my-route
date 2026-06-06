@@ -333,7 +333,14 @@ def get_rivals_live(
     all_vehicles = _get_cached_units()
 
     # Build direction filter from DB
-    allowed: dict[str, set[str]] = {}  # competitor_route -> set of allowed rl_laststation_title values
+    # allowed: routes with a positive direction match -> set of rl_laststation_title values to show
+    # any_mapped: all competitor routes we have ANY mapping for (for this our_route)
+    # Logic: if we have at least one mapping → apply strict mode:
+    #   - routes with a match in this direction → show only matching vehicles
+    #   - routes with no match in this direction → hide entirely
+    # If no mappings at all → show everything (computation hasn't run yet)
+    allowed: dict[str, set[str]] = {}
+    any_mapped: set[str] = set()
     if our_route and our_destination:
         mappings = db.query(models.CompetitorDirectionMap).filter_by(
             our_route_number=our_route,
@@ -341,6 +348,11 @@ def get_rivals_live(
         ).all()
         for m in mappings:
             allowed.setdefault(m.competitor_route_number, set()).add(m.competitor_destination)
+        # Also collect all routes we've ever computed for this our_route (any direction)
+        all_mappings = db.query(models.CompetitorDirectionMap.competitor_route_number).filter_by(
+            our_route_number=our_route,
+        ).distinct().all()
+        any_mapped = {r[0] for r in all_mappings}
 
     result: list[schemas.RivalOut] = []
     for i, v in enumerate(all_vehicles):
@@ -349,11 +361,16 @@ def get_rivals_live(
             if mr_num not in route_set:
                 continue
 
-            # Direction filter: only apply when we have a mapping for this route
-            if allowed and mr_num in allowed:
-                last_station = str(v.get("rl_laststation_title", "") or "").strip()
-                if last_station not in allowed[mr_num]:
-                    continue
+            # Direction filter (strict mode when we have any mapping data):
+            if our_route and our_destination and any_mapped:
+                if mr_num in any_mapped:
+                    # We've computed this route — apply exact filter
+                    if mr_num not in allowed:
+                        continue  # computed but no match in this direction → hide
+                    last_station = str(v.get("rl_laststation_title", "") or "").strip()
+                    if last_station not in allowed[mr_num]:
+                        continue
+                # Routes not yet computed → show all (computation still pending)
 
             lat = float(v.get("u_lat", 0) or 0)
             lng = float(v.get("u_long", 0) or 0)
