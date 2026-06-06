@@ -86,6 +86,13 @@ const ROUTE_STOPS: Record<string, { name: string; lat: number; lng: number }[]> 
 const getRouteStops = (routeNumber: string | null) =>
   ROUTE_STOPS[routeNumber ?? ''] ?? ROUTE_212_STOPS
 
+const DIR_PALETTE = [
+  'islands#blueCircleDotIcon',
+  'islands#greenCircleDotIcon',
+  'islands#violetCircleDotIcon',
+  'islands#orangeCircleDotIcon',
+]
+
 const abbreviateName = (name: string): string => {
   const parts = name.trim().split(/\s+/)
   if (parts.length < 2) return name
@@ -128,7 +135,9 @@ export default function EntMap() {
   const [favoriteRoute, setFavoriteRoute] = useState<string>(() => localStorage.getItem(FAV_ROUTE_KEY) ?? '')
   const [navVehicles, setNavVehicles]     = useState<NavVehicle[]>([])
   const [navLoaded, setNavLoaded]         = useState(false)
-  const [showPanel, setShowPanel]         = useState(false)
+  const [showPanel, setShowPanel]           = useState(false)
+  const [routeDropOpen, setRouteDropOpen]   = useState(false)
+  const [routeDropPos, setRouteDropPos]     = useState({ top: 0, right: 0, width: 0 })
   const [selectedNav, setSelectedNav]     = useState<NavVehicle | null>(null)
   const [selectedLocal, setSelectedLocal] = useState<LocalVehicle | null>(null)
   const [mapReady, setMapReady]           = useState(false)
@@ -136,6 +145,7 @@ export default function EntMap() {
   const ymapRef         = useRef<any>(null)
   const polylineRef     = useRef<any>(null)
   const markersRef      = useRef<any[]>([])
+  const routeBadgeRef   = useRef<HTMLDivElement>(null)
   const navigate        = useNavigate()
 
   // Sync favorite route when window regains focus
@@ -144,6 +154,17 @@ export default function EntMap() {
     window.addEventListener('focus', sync)
     return () => window.removeEventListener('focus', sync)
   }, [])
+
+  useEffect(() => {
+    if (!routeDropOpen) return
+    const close = (e: MouseEvent) => {
+      if (routeBadgeRef.current && !routeBadgeRef.current.contains(e.target as Node)) {
+        setRouteDropOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [routeDropOpen])
 
   // Load local DB data
   useEffect(() => {
@@ -217,12 +238,22 @@ export default function EntMap() {
     markersRef.current = []
 
     if (favoriteRoute) {
-      // Show real Navitrans vehicles
+      // Map unique directions → stable colours (туда = blue, обратно = green, …)
+      const uniqueDirsNow = [...new Set(navVehicles.map(v => v.direction || '').filter(Boolean))]
+      const dirToPreset: Record<string, string> = {}
+      uniqueDirsNow.forEach((d, i) => { dirToPreset[d] = DIR_PALETTE[i] ?? 'islands#greyCircleDotIcon' })
+
       navVehicles.forEach(v => {
-        const preset = v.status === 'active' ? 'islands#orangeAutoIcon' : 'islands#greyAutoIcon'
+        const preset = dirToPreset[v.direction || ''] ?? 'islands#greyCircleDotIcon'
+        const balloon = [
+          `<b>Маршрут №${v.route_number ?? '—'}</b>`,
+          v.direction ? `<span style="color:#888">${v.direction}</span>` : '',
+          v.plate_number ? `Гос. номер: <b>${v.plate_number}</b>` : '',
+          `Скорость: <b>${v.speed.toFixed(0)} км/ч</b>`,
+        ].filter(Boolean).join('<br/>')
         const m = new window.ymaps.Placemark(
           [v.lat, v.lng],
-          { hintContent: `${v.plate_number || '?'} · ${v.speed.toFixed(0)} км/ч` },
+          { balloonContent: balloon, hintContent: v.plate_number || '?' },
           { preset }
         )
         m.events.add('click', () => setSelectedNav(v))
@@ -235,7 +266,7 @@ export default function EntMap() {
       localOnLine.forEach(v => {
         const stops = getRouteStops(v.route_number)
         const stop = stops[(v.id * 3) % stops.length]
-        const preset = v.status === 'on_route' ? 'islands#greenAutoIcon' : v.status === 'repair' ? 'islands#redAutoIcon' : 'islands#greyAutoIcon'
+        const preset = v.status === 'on_route' ? 'islands#greenCircleDotIcon' : v.status === 'repair' ? 'islands#redCircleDotIcon' : 'islands#greyCircleDotIcon'
         const m = new window.ymaps.Placemark([v.lat ?? stop.lat, v.lng ?? stop.lng], {}, { preset })
         m.events.add('click', () => setSelectedLocal(v))
         ymapRef.current.geoObjects.add(m)
@@ -250,6 +281,26 @@ export default function EntMap() {
 
   const findLocalDriver = (plate?: string | null): any | undefined =>
     plate ? allDrivers.find((d: any) => d.plate_number === plate) : undefined
+
+  const openRouteDrop = () => {
+    if (routeBadgeRef.current) {
+      const r = routeBadgeRef.current.getBoundingClientRect()
+      setRouteDropPos({ top: r.bottom + 6, right: window.innerWidth - r.right, width: 220 })
+    }
+    setRouteDropOpen(o => !o)
+  }
+
+  const selectRoute = (num: string) => {
+    setFavoriteRoute(num)
+    localStorage.setItem(FAV_ROUTE_KEY, num)
+    setRouteDropOpen(false)
+  }
+
+  const clearRoute = () => {
+    setFavoriteRoute('')
+    localStorage.removeItem(FAV_ROUTE_KEY)
+    setRouteDropOpen(false)
+  }
 
   // Stats
   const favInfo = routes.find(r => r.number === favoriteRoute)
@@ -281,10 +332,13 @@ export default function EntMap() {
             {favInfo ? `${favInfo.start_point} → ${favInfo.end_point}` : 'Все маршруты'}
           </div>
         </div>
-        {favoriteRoute
-          ? <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: '4px 10px', color: 'white', fontWeight: 800, flexShrink: 0 }}>№ {favoriteRoute}</div>
-          : <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '4px 10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: 12, flexShrink: 0 }}>не выбран</div>
-        }
+        <div ref={routeBadgeRef} onClick={openRouteDrop}
+          style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: '4px 10px', color: 'white', fontWeight: 800, flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, position: 'relative' }}>
+          {favoriteRoute ? `№ ${favoriteRoute}` : 'маршрут'}
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="3">
+            <polyline points={routeDropOpen ? '6 15 12 9 18 15' : '6 9 12 15 18 9'}/>
+          </svg>
+        </div>
         <button onClick={() => navigate('/entrepreneur/settings')}
           style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', flexShrink: 0 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
@@ -611,6 +665,46 @@ export default function EntMap() {
           </div>
         )
       })()}
+
+      {/* ── Route picker dropdown ── */}
+      {routeDropOpen && (
+        <div style={{ position: 'fixed', top: routeDropPos.top, right: routeDropPos.right, width: routeDropPos.width, zIndex: 1001, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', maxHeight: 280, overflowY: 'auto' }}>
+          {favoriteRoute && (
+            <div onMouseDown={clearRoute}
+              style={{ padding: '11px 14px', borderBottom: '1px solid #F5F5F5', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: '#FF3B30', fontWeight: 600, fontSize: 13 }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#FFF5F5')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Сбросить выбор
+            </div>
+          )}
+          {routes.length === 0
+            ? <div style={{ padding: '14px', fontSize: 13, color: 'var(--text-muted)' }}>Нет маршрутов</div>
+            : routes.map(rt => {
+              const isSelected = rt.number === favoriteRoute
+              return (
+                <div key={rt.number} onMouseDown={() => selectRoute(rt.number)}
+                  style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: isSelected ? '#FFF3EE' : 'white', borderBottom: '1px solid #F5F5F5' }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#FAFAFA' }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isSelected ? '#FFF3EE' : 'white' }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: isSelected ? 'var(--orange)' : '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontWeight: 800, fontSize: 12, color: isSelected ? 'white' : 'var(--text-muted)' }}>{rt.number}</span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: isSelected ? 'var(--orange)' : 'var(--text-primary)' }}>№ {rt.number}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {rt.start_point} → {rt.end_point}
+                    </div>
+                  </div>
+                  {isSelected && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  )}
+                </div>
+              )
+            })
+          }
+        </div>
+      )}
     </div>
   )
 }

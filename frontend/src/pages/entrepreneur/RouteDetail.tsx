@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getRoutes, getVehicles, deleteRoute as apiDeleteRoute, updateRoute } from '../../api/client'
+import { getRoutes, getVehicles, deleteRoute as apiDeleteRoute, updateRoute, getRivalsLive } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import { formatCert, capitalizeFirst } from '../../utils/format'
@@ -24,9 +24,10 @@ const OIcon = ({ children }: { children: React.ReactNode }) => (
   <div className="row-icon" style={{ background: '#FFF3EE', borderRadius: 8 }}>{children}</div>
 )
 
-function EditableRow({ icon, label, value, onChange, locked }: {
+function EditableRow({ icon, label, value, onChange, locked, formatInput }: {
   icon: React.ReactNode; label: string; value: string
   onChange?: (v: string) => void; locked?: boolean
+  formatInput?: (v: string) => string
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -46,7 +47,8 @@ function EditableRow({ icon, label, value, onChange, locked }: {
       <OIcon>{icon}</OIcon>
       <span className="row-label">{label}</span>
       {editing ? (
-        <input ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)}
+        <input ref={inputRef} value={draft}
+          onChange={e => setDraft(formatInput ? formatInput(e.target.value) : e.target.value)}
           onBlur={save} onKeyDown={e => e.key === 'Enter' && save()}
           style={{ flex: 1, textAlign: 'right', border: 'none', borderBottom: '1.5px solid var(--orange)', background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', outline: 'none', color: 'var(--orange)' }} />
       ) : (
@@ -76,6 +78,24 @@ export default function EntRouteDetail() {
         setData({ ...found })
         const count = rVehicles.data.filter((v: any) => v.route_number === found.number).length
         setTotalVehicles(count)
+        if (!found.start_point || !found.end_point) {
+          getRivalsLive([found.number]).then(res => {
+            const parts = new Set<string>()
+            res.data.forEach((v: any) => {
+              const [a, b] = (v.direction || '').split(' → ')
+              if (a?.trim()) parts.add(a.trim())
+              if (b?.trim()) parts.add(b.trim())
+            })
+            const t = [...parts]
+            if (t.length >= 2) {
+              const patch: any = {}
+              if (!found.start_point) patch.start_point = t[0]
+              if (!found.end_point)   patch.end_point   = t[1]
+              setData((p: any) => ({ ...p, ...patch }))
+              updateRoute(found.id, patch).catch(() => {})
+            }
+          }).catch(() => {})
+        }
       })
       .catch(() => {})
   }, [id])
@@ -93,6 +113,26 @@ export default function EntRouteDetail() {
     if (!base) return
     setData((p: any) => ({ ...p, [k]: v }))
     updateRoute(base.id, { [k]: v }).catch(() => {})
+  }
+
+  const setNumber = (v: string) => {
+    if (!base) return
+    setData((p: any) => ({ ...p, number: v }))
+    updateRoute(base.id, { number: v }).catch(() => {})
+    getRivalsLive([v]).then(res => {
+      const parts = new Set<string>()
+      res.data.forEach((nav: any) => {
+        const [a, b] = (nav.direction || '').split(' → ')
+        if (a?.trim()) parts.add(a.trim())
+        if (b?.trim()) parts.add(b.trim())
+      })
+      const t = [...parts]
+      if (t.length >= 2) {
+        const patch = { start_point: t[0], end_point: t[1] }
+        setData((p: any) => ({ ...p, ...patch }))
+        updateRoute(base.id, patch).catch(() => {})
+      }
+    }).catch(() => {})
   }
 
   if (!data) return <LogoLoader fullPage />
@@ -128,11 +168,11 @@ export default function EntRouteDetail() {
         <div className="card">
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
-            label="Номер маршрута" value={data.number} onChange={set('number')}
+            label="Номер маршрута" value={data.number} onChange={setNumber}
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>}
-            label="Свидетельство" value={data.document_number ?? ''} onChange={v => set('document_number')(formatCert(v))}
+            label="Свидетельство" value={data.document_number ?? ''} onChange={set('document_number')} formatInput={formatCert}
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/></svg>}

@@ -3,16 +3,10 @@ const LATIN_TO_CYR: Record<string, string> = {
 }
 const PLATE_LETTERS = 'АВЕКМНОРСТУХ'
 
-// А 123 АА 55 (или А 123 АА 777 для трёхзначного региона)
+// А123АА55 — без пробелов, латиница → кириллица
 export function formatPlate(raw: string): string {
   const conv = raw.toUpperCase().split('').map(c => LATIN_TO_CYR[c] ?? c).join('')
-  const clean = conv.split('').filter(c => PLATE_LETTERS.includes(c) || /\d/.test(c)).join('').slice(0, 9)
-  let out = ''
-  for (let i = 0; i < clean.length; i++) {
-    if (i === 1 || i === 4 || i === 6) out += ' '
-    out += clean[i]
-  }
-  return out
+  return conv.split('').filter(c => PLATE_LETTERS.includes(c) || /\d/.test(c)).join('').slice(0, 9)
 }
 
 // 00 00 123456

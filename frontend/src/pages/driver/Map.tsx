@@ -1,13 +1,35 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getRivalsLive, requestRecommendation, getMe } from '../../api/client'
+import { getRivalsLive, requestRecommendation, getMe, getRoutes } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
 declare global { interface Window { ymaps: any } }
 
 const RIVAL_ROUTES_KEY = 'driver_rival_routes'
+const SHIFT_START_KEY  = 'driver_shift_start'
 const OMSK_LAT = 54.9885
 const OMSK_LNG = 73.3242
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const ALL_ROUTES: string[] = [
+  '1','3','5','6Н','8Н','11','12','13','14','16','17','20','21','22','23','24','25','26',
+  '28','29','30','31','32','33','34','36к','37','39','45','46','47Н','49','50','51','52',
+  '55','58','59','60','61','62','63','66','70','71','72','73','77','78','79','80','83',
+  '87','88','89','90','94','95','96','98','100','103','106','109','110','112','116','117',
+  '119','122','125','131','132','136','138','139','140','141','144','145','155','156','157',
+  '158','159','160','161','162','165','168','169','171','172','173','174','177','178','185',
+  '190','191','193','196','197','198','212','214','219','324','327','336','352','355','507П',
+  'Тр.2','Тр.3','Тр.4','Тр.7','Тр.12','Тр.15','Тр.16','Тр.67',
+  'Тм.1','Тм.2','Тм.4','Тм.7','Тм.8','Тм.9',
+]
 
 // Yandex Maps color presets for different routes (deterministic by route string hash)
 const ROUTE_PRESETS = [
@@ -57,14 +79,86 @@ export default function DriverMap() {
   // keyed by unit_id (or fallback string)
   const rivalMarkersRef = useRef<Map<string, MarkerEntry>>(new Map())
 
-  const [driverRoute, setDriverRoute] = useState('—')
+  const [driverRoute, setDriverRoute]   = useState('—')
+  const [driverInfo, setDriverInfo]     = useState<any>(null)
+  const [routeTerminals, setRouteTerminals] = useState<{ start: string; end: string } | null>(null)
+  const [direction, setDirection]       = useState<'forward' | 'back'>(() => (localStorage.getItem('driver_direction') as any) || 'forward')
+  const [shiftStarted, setShiftStarted] = useState(() => !!localStorage.getItem(SHIFT_START_KEY))
+  const [navDriverPos, setNavDriverPos] = useState<{ lat: number; lng: number; speed: number } | null>(null)
+  const [isNavTracked, setIsNavTracked] = useState(false)
+  const [navDirection, setNavDirection] = useState<string | null>(null)
+  const [navToast, setNavToast]         = useState<{ text: string; type: 'ok' | 'warn' } | null>(null)
+  const driverInfoRef  = useRef<any>(null)
+  const driverRouteRef = useRef('—')
+  const wasNavTracked  = useRef<boolean | null>(null)
+  const toastTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [rivals2, setRivals2] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(RIVAL_ROUTES_KEY) || '[]') } catch { return [] }
+  })
+  const [rivalInput, setRivalInput]   = useState('')
+  const [rivalDropOpen, setRivalDropOpen] = useState(false)
+  const [rivalDropPos, setRivalDropPos]   = useState({ top: 0, left: 0, width: 0 })
+  const rivalInputRef = useRef<HTMLInputElement>(null)
+  const rivalDropRef  = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getMe().then(r => {
       const route = r.data.route_number
-      if (route) setDriverRoute(route)
+      if (route) {
+        setDriverRoute(route)
+        getRoutes().then(rr => {
+          const found = rr.data.find((x: any) => x.number === route)
+          if (found?.start_point && found?.end_point) {
+            setRouteTerminals({ start: found.start_point, end: found.end_point })
+          }
+        }).catch(() => {})
+      }
+      setDriverInfo(r.data)
     }).catch(() => {})
   }, [])
+
+  const startShift = () => {
+    localStorage.setItem(SHIFT_START_KEY, new Date().toISOString())
+    setShiftStarted(true)
+  }
+
+  const switchDirection = (d: 'forward' | 'back') => {
+    setDirection(d)
+    localStorage.setItem('driver_direction', d)
+  }
+
+  const dirLabel = (d: 'forward' | 'back') => {
+    if (!routeTerminals) return d === 'forward' ? 'Туда' : 'Обратно'
+    return d === 'forward' ? routeTerminals.end : routeTerminals.start
+  }
+
+  const shortLabel = (s: string) => s.length > 16 ? s.slice(0, 15) + '…' : s
+
+  useEffect(() => {
+    if (shiftStarted) return
+    localStorage.setItem(RIVAL_ROUTES_KEY, JSON.stringify(rivals2))
+    window.dispatchEvent(new CustomEvent('rival-routes-changed'))
+  }, [rivals2, shiftStarted])
+
+  useEffect(() => {
+    if (!rivalDropOpen) return
+    const close = (e: MouseEvent) => {
+      if (!rivalDropRef.current?.contains(e.target as Node)) setRivalDropOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [rivalDropOpen])
+
+  const addRival = (r: string) => {
+    if (!rivals2.includes(r)) setRivals2(p => [...p, r])
+    setRivalInput('')
+    setRivalDropOpen(false)
+    rivalInputRef.current?.focus()
+  }
+  const removeRival = (r: string) => setRivals2(p => p.filter(x => x !== r))
+  const rivalSuggestions = rivalInput.trim()
+    ? ALL_ROUTES.filter(r => r.toLowerCase().includes(rivalInput.toLowerCase()) && !rivals2.includes(r)).slice(0, 8)
+    : []
 
   const speak = useCallback((text: string) => {
     if (!voiceOn || !window.speechSynthesis) return
@@ -76,16 +170,77 @@ export default function DriverMap() {
 
   // Sync positionRef so click handlers always get the latest driver position
   useEffect(() => { positionRef.current = position }, [position])
+  useEffect(() => { driverInfoRef.current = driverInfo }, [driverInfo])
+  useEffect(() => { driverRouteRef.current = driverRoute }, [driverRoute])
 
-  // ── Расстояние по формуле Хаверсина (км) ───────────────────────
-  function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 6371
-    const dLat = (lat2 - lat1) * Math.PI / 180
-    const dLng = (lng2 - lng1) * Math.PI / 180
-    const a = Math.sin(dLat / 2) ** 2
-      + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  }
+  // ── Привязка метки к Навитрансу ─────────────────────────────────
+  const showToast = useCallback((text: string, type: 'ok' | 'warn') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setNavToast({ text, type })
+    toastTimer.current = setTimeout(() => setNavToast(null), 5000)
+  }, [])
+
+  useEffect(() => {
+    if (!shiftStarted) return
+    const poll = async () => {
+      const route = driverRouteRef.current
+      const plate = driverInfoRef.current?.vehicle_plate
+      if (!route || route === '—' || !plate) return
+      try {
+        const res = await getRivalsLive([route])
+        const myVeh = res.data.find((v: any) => v.plate_number === plate)
+
+        if (!myVeh) {
+          if (wasNavTracked.current !== false) {
+            showToast('Связь с ТС потеряна, переключаюсь на ваш GPS', 'warn')
+          }
+          wasNavTracked.current = false
+          setIsNavTracked(false)
+          setNavDriverPos(null)
+          return
+        }
+
+        const navLat = parseFloat(String(myVeh.lat ?? 0))
+        const navLng = parseFloat(String(myVeh.lng ?? 0))
+        if (!navLat || !navLng) { setIsNavTracked(false); return }
+
+        const gps = positionRef.current
+        if (gps && haversineKm(gps.lat, gps.lng, navLat, navLng) > 0.5) {
+          if (wasNavTracked.current !== false) {
+            showToast('Геопозиция расходится с данными ТС, переключаюсь на ваш GPS', 'warn')
+          }
+          wasNavTracked.current = false
+          setIsNavTracked(false)
+          setNavDriverPos(null)
+          return
+        }
+
+        if (wasNavTracked.current !== true) {
+          showToast('Синхронизировано с данными Навитранса', 'ok')
+        }
+        wasNavTracked.current = true
+        setNavDriverPos({ lat: navLat, lng: navLng, speed: Math.round(parseFloat(String(myVeh.speed ?? 0))) })
+        setNavDirection(myVeh.direction || null)
+        setIsNavTracked(true)
+        // Синхронизируем ручной переключатель с реальным направлением
+        if (myVeh.direction && routeTerminals) {
+          const dest = (myVeh.direction as string).split(' → ')[1]?.trim() ?? ''
+          const d = dest.toLowerCase().includes(routeTerminals.end.toLowerCase().slice(0, 6)) ? 'forward' : 'back'
+          setDirection(d)
+          localStorage.setItem('driver_direction', d)
+        }
+      } catch {
+        if (wasNavTracked.current !== false) {
+          showToast('Связь с ТС потеряна, переключаюсь на ваш GPS', 'warn')
+        }
+        wasNavTracked.current = false
+        setIsNavTracked(false)
+      }
+    }
+    poll()
+    const t = setInterval(poll, 12000)
+    return () => clearInterval(t)
+  }, [shiftStarted, showToast])
 
   // ── Реальная геолокация ──────────────────────────────────────────
   useEffect(() => {
@@ -169,18 +324,20 @@ export default function DriverMap() {
   }, [])
 
   // ── Метка водителя ───────────────────────────────────────────────
+  const effectivePos = (isNavTracked && navDriverPos) ? navDriverPos : position
+
   useEffect(() => {
-    if (!ymapRef.current || !mapReady || !position) return
+    if (!ymapRef.current || !mapReady || !effectivePos) return
     if (myMarkerRef.current) ymapRef.current.geoObjects.remove(myMarkerRef.current)
     const me = new window.ymaps.Placemark(
-      [position.lat, position.lng],
-      { balloonContent: `Моя позиция · ${position.speed} км/ч` },
+      [effectivePos.lat, effectivePos.lng],
+      { balloonContent: `Моя позиция · ${effectivePos.speed} км/ч` },
       { preset: 'islands#orangeAutoIcon' }
     )
     ymapRef.current.geoObjects.add(me)
     myMarkerRef.current = me
-    ymapRef.current.setCenter([position.lat, position.lng])
-  }, [position, mapReady])
+    ymapRef.current.setCenter([effectivePos.lat, effectivePos.lng])
+  }, [effectivePos, mapReady])
 
   // ── Плавное обновление маркеров конкурентов ─────────────────────
   useEffect(() => {
@@ -306,6 +463,140 @@ export default function DriverMap() {
     } catch {}
   }
 
+  if (!shiftStarted) {
+    const today = new Date()
+    const dateStr = today.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + `${String(today.getHours()).padStart(2,'0')}:${String(today.getMinutes()).padStart(2,'0')}`
+    const plate = driverInfo?.vehicle_plate || '—'
+    const route = driverInfo?.route_number  || '—'
+    const name  = driverInfo?.full_name     || ''
+
+    return (
+      <div className="page" style={{ background: '#F7F7F7' }}>
+        <StatusBar />
+        <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: 'white', fontWeight: 800, fontSize: 16 }}>Мой.Маршрут</div>
+            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Начало смены</div>
+          </div>
+        </div>
+
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Маршрут */}
+          <div className="card" style={{ padding: '20px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 20, flexShrink: 0 }}>
+              {route !== '—' ? route : '?'}
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>Маршрут №{route}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>{dateStr}</div>
+            </div>
+          </div>
+
+          {/* Данные */}
+          <div className="card">
+            <div className="row-item">
+              <div className="row-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <span className="row-label">Водитель</span>
+              <span className="row-value">{name || '—'}</span>
+            </div>
+            <div className="row-item">
+              <div className="row-icon"><img src="/bus.png" width="20" height="20" /></div>
+              <span className="row-label">Гос. номер ТС</span>
+              <span className="row-value" style={{ color: plate !== '—' ? 'var(--orange)' : undefined }}>{plate}</span>
+            </div>
+            <div className="row-item">
+              <div className="row-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <span className="row-label">Дата</span>
+              <span className="row-value">{dateStr}</span>
+            </div>
+          </div>
+
+          {/* Конкурентные маршруты */}
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Конкурентные маршруты</div>
+
+            <div ref={rivalDropRef} style={{ position: 'relative', marginBottom: rivals2.length ? 10 : 0 }}>
+              <input ref={rivalInputRef} className="form-input"
+                placeholder="Введите номер маршрута..."
+                value={rivalInput}
+                onChange={e => {
+                  setRivalInput(e.target.value)
+                  if (rivalInputRef.current) {
+                    const r = rivalInputRef.current.getBoundingClientRect()
+                    setRivalDropPos({ top: r.bottom + 4, left: r.left, width: r.width })
+                  }
+                  setRivalDropOpen(true)
+                }}
+                onFocus={() => {
+                  if (rivalInput.trim() && rivalInputRef.current) {
+                    const r = rivalInputRef.current.getBoundingClientRect()
+                    setRivalDropPos({ top: r.bottom + 4, left: r.left, width: r.width })
+                    setRivalDropOpen(true)
+                  }
+                }}
+                style={{ fontSize: 14, paddingRight: 36 }}
+              />
+              <svg style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+                width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
+
+            {rivals2.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {rivals2.map(r => (
+                  <div key={r} style={{ background: '#FFF3EE', borderRadius: 20, padding: '5px 10px 5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--orange)' }}>№{r}</span>
+                    <button onClick={() => removeRival(r)}
+                      style={{ background: 'none', border: 'none', color: '#AAAAAA', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 0 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button onClick={startShift}
+            style={{ marginTop: 8, padding: '18px 24px', borderRadius: 18, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 800, fontSize: 17, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 4px 20px rgba(255,102,0,0.35)' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+            Выйти на маршрут
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            Время выхода на маршрут будет зафиксировано в отчёте
+          </p>
+        </div>
+
+        {rivalDropOpen && rivalSuggestions.length > 0 && (
+          <div style={{ position: 'fixed', top: rivalDropPos.top, left: rivalDropPos.left, width: rivalDropPos.width, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', zIndex: 2000, overflow: 'hidden' }}>
+            {rivalSuggestions.map((r, i) => (
+              <div key={r} onMouseDown={() => addRival(r)}
+                style={{ padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: i < rivalSuggestions.length - 1 ? '1px solid #F5F5F5' : 'none' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#FFF3EE')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontWeight: 800, fontSize: 12, color: 'var(--orange)' }}>{r}</span>
+                </div>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>Маршрут №{r}</span>
+                <svg style={{ marginLeft: 'auto' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </div>
+            ))}
+          </div>
+        )}
+        {rivalDropOpen && rivalInput.trim() && rivalSuggestions.length === 0 && (
+          <div style={{ position: 'fixed', top: rivalDropPos.top, left: rivalDropPos.left, width: rivalDropPos.width, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid var(--border)', zIndex: 2000, padding: '12px 16px', fontSize: 14, color: 'var(--text-muted)' }}>
+            {rivals2.includes(rivalInput.trim()) ? 'Уже добавлен' : 'Маршрут не найден'}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
       <StatusBar />
@@ -329,6 +620,21 @@ export default function DriverMap() {
         </button>
       </div>
 
+      {/* Постоянная строка статуса навигации */}
+      <div style={{ background: isNavTracked ? '#1A3D2A' : '#2C2C2E', padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: isNavTracked ? '#34C759' : '#AAAAAA', flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 600, color: isNavTracked ? '#34C759' : '#AAAAAA', flex: 1 }}>
+          {isNavTracked
+            ? `Навигация: данные Навитранса (ГЛОНАСС)`
+            : `Навигация: GPS устройства`}
+        </span>
+        {isNavTracked && driverInfo?.vehicle_plate && (
+          <span style={{ fontSize: 10, color: 'rgba(52,199,89,0.7)', fontWeight: 600 }}>
+            {driverInfo.vehicle_plate}
+          </span>
+        )}
+      </div>
+
       <div style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
         {!mapReady && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#E8E8E8', flexDirection: 'column', gap: 12 }}>
@@ -338,10 +644,13 @@ export default function DriverMap() {
         )}
         <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 
-        {position && (
+        {effectivePos && (
           <div style={{ position: 'absolute', top: 12, right: 12, background: 'white', borderRadius: 12, padding: '8px 12px', boxShadow: 'var(--shadow-md)', textAlign: 'center', minWidth: 52 }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--orange)', lineHeight: 1 }}>{position.speed}</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--orange)', lineHeight: 1 }}>{effectivePos.speed}</div>
             <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: 0.5 }}>КМ/Ч</div>
+            <div style={{ fontSize: 8, fontWeight: 700, marginTop: 2, color: isNavTracked ? '#34C759' : '#AAAAAA', letterSpacing: 0.3 }}>
+              {isNavTracked ? 'ГЛОНАСС' : 'GPS'}
+            </div>
           </div>
         )}
 
@@ -351,14 +660,50 @@ export default function DriverMap() {
           </div>
         )}
 
-        {rivalRoutes.length === 0 && mapReady && (
+        {rivalRoutes.length === 0 && mapReady && !navToast && (
           <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', background: 'white', borderRadius: 20, padding: '8px 16px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
             Выберите конкурентов в Настройках
+          </div>
+        )}
+
+        {navToast && (
+          <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 10, pointerEvents: 'none' }}>
+            <div style={{ background: navToast.type === 'ok' ? '#1C1C1E' : '#1C1C1E', borderRadius: 14, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.25)' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: navToast.type === 'ok' ? '#34C759' : '#FF9500', flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'white', lineHeight: 1.4 }}>{navToast.text}</span>
+              <div style={{ marginLeft: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.45)', flexShrink: 0 }}>
+                {isNavTracked ? 'ГЛОНАСС' : 'GPS'}
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       <div className="map-info-bar" style={{ background: 'white', borderTop: '1px solid var(--border)', padding: '12px 14px', paddingBottom: 'calc(12px + var(--nav-safe))' }}>
+        {/* Направление движения */}
+        {isNavTracked ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, background: '#F0FBF4', borderRadius: 20, padding: '7px 12px' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#1E7A38', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {navDirection ?? 'Направление определяется...'}
+            </span>
+            <span style={{ fontSize: 10, color: '#34C759', fontWeight: 600, flexShrink: 0 }}>авто</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {(['forward', 'back'] as const).map(d => {
+              const active = direction === d
+              return (
+                <button key={d} onClick={() => switchDirection(d)}
+                  style={{ flex: 1, padding: '8px 6px', borderRadius: 20, border: `1.5px solid ${active ? 'var(--orange)' : 'var(--border)'}`, background: active ? 'var(--orange)' : 'white', color: active ? 'white' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+                  {shortLabel(dirLabel(d))}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {hint ? (
           <div style={{ background: 'var(--orange-bg)', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 18 }}>⚡</span>

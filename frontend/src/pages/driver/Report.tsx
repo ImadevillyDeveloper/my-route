@@ -44,6 +44,14 @@ const Sparkles = () => (
   </>
 )
 
+const SHIFT_START_KEY = 'driver_shift_start'
+
+const fmtTime = (iso: string) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
 export default function DriverReport() {
   const [scanned, setScanned] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -51,6 +59,7 @@ export default function DriverReport() {
   const [showSuccess, setShowSuccess] = useState(false)
   const [showError, setShowError] = useState(false)
   const [createdId, setCreatedId] = useState<number | null>(null)
+  const [shiftStartTime] = useState(() => fmtTime(localStorage.getItem(SHIFT_START_KEY) || ''))
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -124,13 +133,14 @@ export default function DriverReport() {
         route_number: driverRoute || form.vehicle_plate || undefined,
         plate_number: form.vehicle_plate || undefined,
         shift_date: new Date().toISOString().slice(0, 10),
-        shift_start: '', shift_end: '',
+        shift_start: shiftStartTime, shift_end: '',
         total_trips: Number(form.circles_count) || 0,
         total_revenue: Number(form.cards_count) * 50 || 0,
         fuel_cost: 0,
-        notes: `Гос.номер: ${form.vehicle_plate}, Маршрут: ${driverRoute}, Смена: ${form.shift_number}, Кругов: ${form.circles_count}, Карточек: ${form.cards_count}, ТС: ${form.vehicle_condition}`,
+        notes: `Гос.номер: ${form.vehicle_plate}, Маршрут: ${driverRoute}, Смена: ${form.shift_number}, Выход: ${shiftStartTime || '—'}, Кругов: ${form.circles_count}, Карточек: ${form.cards_count}, ТС: ${form.vehicle_condition}`,
       })
       if (res.data?.id) setCreatedId(res.data.id)
+      localStorage.removeItem(SHIFT_START_KEY)
     } catch {}
     finally { setSubmitting(false) }
     setShowSuccess(true)
@@ -191,6 +201,11 @@ export default function DriverReport() {
 
         {/* Fields */}
         <div className="card">
+          {shiftStartTime && (
+            <FieldRow label="Начало смены:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}>
+              <span className="row-value" style={{ color: 'var(--orange)' }}>{shiftStartTime}</span>
+            </FieldRow>
+          )}
           <FieldRow label="Номер смены:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}>
             <input className="row-input" placeholder="Введите..." value={form.shift_number} onChange={e => set('shift_number', e.target.value)}
               style={{ color: form.shift_number ? 'var(--orange)' : undefined }} />
