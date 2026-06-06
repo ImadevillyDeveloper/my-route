@@ -400,15 +400,28 @@ export default function DriverMap() {
     ymapRef.current.setCenter([effectivePos.lat, effectivePos.lng])
   }, [effectivePos, mapReady])
 
+  // Когда GPS: для известных маршрутов всегда берём курс из терминалов по кнопке направления
+  // (реагирует мгновенно). Для неизвестных маршрутов и Навитранса — по реальному движению.
+  const effectiveBearing = useMemo(() => {
+    if (!isNavTracked) {
+      const terminals = ROUTE_TERMINAL_COORDS[driverRoute]
+      if (terminals) {
+        const [from, to] = direction === 'forward' ? [terminals[0], terminals[1]] : [terminals[1], terminals[0]]
+        return compassBearing(from[0], from[1], to[0], to[1])
+      }
+    }
+    return driverBearing
+  }, [isNavTracked, driverRoute, direction, driverBearing])
+
   const filteredRivals = useMemo(() => {
-    if (driverBearing === null) return rivals
+    if (effectiveBearing === null) return rivals
     return rivals.filter((r: any, i: number) => {
       const key = r.unit_id ? String(r.unit_id) : `fallback-${i}`
       const rb = rivalBearingsRef.current.get(key)
       if (rb === undefined) return true
-      return bearingDiff(driverBearing, rb) < 90
+      return bearingDiff(effectiveBearing, rb) < 90
     })
-  }, [rivals, driverBearing])
+  }, [rivals, effectiveBearing])
 
   // ── Плавное обновление маркеров конкурентов ─────────────────────
   useEffect(() => {
