@@ -179,6 +179,12 @@ export default function DriverMap() {
   useEffect(() => { driverInfoRef.current = driverInfo }, [driverInfo])
   useEffect(() => { driverRouteRef.current = driverRoute }, [driverRoute])
 
+  // При загрузке маршрута водителя — прогоняем маппинг для всех уже сохранённых конкурентных маршрутов
+  useEffect(() => {
+    if (driverRoute === '—' || rivals2.length === 0) return
+    rivals2.forEach(r => computeCompetitorMapping(driverRoute, r).catch(() => {}))
+  }, [driverRoute]) // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // ── Привязка метки к Навитрансу ─────────────────────────────────
   const showToast = useCallback((text: string, type: 'ok' | 'warn') => {
