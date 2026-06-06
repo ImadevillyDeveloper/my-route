@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { getRivalsLive, requestRecommendation, getMe, getRoutes } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
@@ -61,6 +61,29 @@ interface MarkerEntry {
 
 const ANIM_DURATION_MS = 8000  // spread movement over 8 s (< 10 s poll interval)
 
+// Компасный курс (degrees, -180..180)
+function compassBearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180
+  const y = Math.sin(dLng) * Math.cos(φ2)
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng)
+  return Math.atan2(y, x) * 180 / Math.PI
+}
+
+// Угол между двумя курсами (0..180)
+function bearingDiff(b1: number, b2: number): number {
+  const d = Math.abs(b1 - b2) % 360
+  return d > 180 ? 360 - d : d
+}
+
+// Приблизительные координаты терминалов для известных маршрутов
+// [forward_start, forward_end] — направление «туда»
+const ROUTE_TERMINAL_COORDS: Record<string, [[number, number], [number, number]]> = {
+  '59':  [[54.9941, 73.4525], [55.0615, 73.2500]],  // Биофабрика → НПЗ
+  '212': [[54.9719, 73.2857], [54.9779, 73.4704]],  // Мега → Пос. Чкаловский
+  '73':  [[54.9779, 73.4704], [55.0613, 73.2502]],  // Чкаловский → НПЗ
+}
+
 export default function DriverMap() {
   const [position, setPosition]     = useState<Pos | null>(null)
   const [geoError, setGeoError]     = useState<string | null>(null)
@@ -88,10 +111,15 @@ export default function DriverMap() {
   const [isNavTracked, setIsNavTracked] = useState(false)
   const [navDirection, setNavDirection] = useState<string | null>(null)
   const [navToast, setNavToast]         = useState<{ text: string; type: 'ok' | 'warn' } | null>(null)
-  const driverInfoRef  = useRef<any>(null)
-  const driverRouteRef = useRef('—')
-  const wasNavTracked  = useRef<boolean | null>(null)
-  const toastTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [driverBearing, setDriverBearing] = useState<number | null>(null)
+  const driverInfoRef    = useRef<any>(null)
+  const driverRouteRef   = useRef('—')
+  const wasNavTracked    = useRef<boolean | null>(null)
+  const toastTimer       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasGpsBearing    = useRef(false)
+  const prevEffPosRef    = useRef<{ lat: number; lng: number } | null>(null)
+  const prevRivalPosRef  = useRef<Map<string, { lat: number; lng: number }>>(new Map())
+  const rivalBearingsRef = useRef<Map<string, number>>(new Map())
   const [rivals2, setRivals2] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(RIVAL_ROUTES_KEY) || '[]') } catch { return [] }
   })
@@ -172,6 +200,27 @@ export default function DriverMap() {
   useEffect(() => { positionRef.current = position }, [position])
   useEffect(() => { driverInfoRef.current = driverInfo }, [driverInfo])
   useEffect(() => { driverRouteRef.current = driverRoute }, [driverRoute])
+
+  // Курс из ручного выбора направления (для известных маршрутов, пока нет GPS-курса)
+  useEffect(() => {
+    if (hasGpsBearing.current) return
+    const terminals = ROUTE_TERMINAL_COORDS[driverRoute]
+    if (!terminals) return
+    const [from, to] = direction === 'forward' ? [terminals[0], terminals[1]] : [terminals[1], terminals[0]]
+    setDriverBearing(compassBearing(from[0], from[1], to[0], to[1]))
+  }, [direction, driverRoute])
+
+  // Курс из реального движения (перекрывает ручной, работает для любого маршрута)
+  useEffect(() => {
+    const pos = (isNavTracked && navDriverPos) ? navDriverPos : position
+    if (!pos) return
+    const prev = prevEffPosRef.current
+    if (prev && haversineKm(prev.lat, prev.lng, pos.lat, pos.lng) > 0.02) {
+      hasGpsBearing.current = true
+      setDriverBearing(compassBearing(prev.lat, prev.lng, pos.lat, pos.lng))
+    }
+    prevEffPosRef.current = { lat: pos.lat, lng: pos.lng }
+  }, [isNavTracked, navDriverPos, position])
 
   // ── Привязка метки к Навитрансу ─────────────────────────────────
   const showToast = useCallback((text: string, type: 'ok' | 'warn') => {
@@ -276,6 +325,18 @@ export default function DriverMap() {
       const res = await getRivalsLive(saved)
       setRivals(res.data)
       setLiveError(false)
+      // Обновляем курсы конкурентов по смещению позиции между опросами
+      res.data.forEach((r: any, i: number) => {
+        const key = r.unit_id ? String(r.unit_id) : `fallback-${i}`
+        const lat = parseFloat(String(r.lat ?? 0))
+        const lng = parseFloat(String(r.lng ?? 0))
+        if (!lat || !lng) return
+        const prev = prevRivalPosRef.current.get(key)
+        if (prev && haversineKm(prev.lat, prev.lng, lat, lng) > 0.02) {
+          rivalBearingsRef.current.set(key, compassBearing(prev.lat, prev.lng, lat, lng))
+        }
+        prevRivalPosRef.current.set(key, { lat, lng })
+      })
     } catch {
       setLiveError(true)
     }
@@ -339,6 +400,16 @@ export default function DriverMap() {
     ymapRef.current.setCenter([effectivePos.lat, effectivePos.lng])
   }, [effectivePos, mapReady])
 
+  const filteredRivals = useMemo(() => {
+    if (driverBearing === null) return rivals
+    return rivals.filter((r: any, i: number) => {
+      const key = r.unit_id ? String(r.unit_id) : `fallback-${i}`
+      const rb = rivalBearingsRef.current.get(key)
+      if (rb === undefined) return true
+      return bearingDiff(driverBearing, rb) < 90
+    })
+  }, [rivals, driverBearing])
+
   // ── Плавное обновление маркеров конкурентов ─────────────────────
   useEffect(() => {
     if (!ymapRef.current || !mapReady) return
@@ -348,7 +419,7 @@ export default function DriverMap() {
 
     // Build a set of current unit IDs from new data
     const incoming = new Map<string, any>()
-    rivals.forEach((r, i) => {
+    filteredRivals.forEach((r: any, i: number) => {
       const key = r.unit_id ? String(r.unit_id) : `fallback-${i}`
       incoming.set(key, r)
     })
@@ -444,7 +515,7 @@ export default function DriverMap() {
         markersMap.set(key, { marker, lat, lng, animFrames: [] })
       }
     }
-  }, [rivals, mapReady])
+  }, [filteredRivals, mapReady])
 
   // ── Cleanup анимаций при размонтировании ─────────────────────────
   useEffect(() => {
@@ -656,7 +727,7 @@ export default function DriverMap() {
 
         {rivalRoutes.length > 0 && (
           <div style={{ position: 'absolute', top: 12, left: 12, background: liveError ? '#FFF0EF' : '#EDFAF1', borderRadius: 10, padding: '5px 10px', fontSize: 11, fontWeight: 700, color: liveError ? '#FF3B30' : '#34C759' }}>
-            {liveError ? '⚠ Нет связи' : `● LIVE · ${rivals.length} ТС`}
+            {liveError ? '⚠ Нет связи' : `● LIVE · ${filteredRivals.length} ТС`}
           </div>
         )}
 
@@ -710,10 +781,13 @@ export default function DriverMap() {
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{hint.message}</span>
             <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 16, cursor: 'pointer' }}>✕</button>
           </div>
-        ) : rivals.length > 0 ? (
+        ) : filteredRivals.length > 0 ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 13, color: 'var(--text-secondary)', flex: 1 }}>
-              Конкурентов на маршрутах: <strong>{rivals.length}</strong>
+              Конкурентов на маршрутах: <strong>{filteredRivals.length}</strong>
+              {rivals.length > filteredRivals.length && (
+                <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {rivals.length - filteredRivals.length} встречных скрыто</span>
+              )}
             </span>
             <button className="btn btn-primary" onClick={askAI} style={{ width: 'auto', padding: '8px 16px', fontSize: 13, borderRadius: 20 }}>
               ⚡ Совет
