@@ -81,7 +81,9 @@ export default function DriverMap() {
   const [driverRoute, setDriverRoute]   = useState('—')
   const [driverInfo, setDriverInfo]     = useState<any>(null)
   const [routeTerminals, setRouteTerminals] = useState<{ start: string; end: string } | null>(null)
+  const routeTerminalsRef = useRef<{ start: string; end: string } | null>(null)
   const [direction, setDirection]       = useState<'forward' | 'back'>('forward')
+  const directionRef = useRef<'forward' | 'back'>('forward')
   const [shiftStarted, setShiftStarted] = useState(false)
   const [navDriverPos, setNavDriverPos] = useState<{ lat: number; lng: number; speed: number } | null>(null)
   const [isNavTracked, setIsNavTracked] = useState(false)
@@ -108,13 +110,18 @@ export default function DriverMap() {
         getRoutes().then(rr => {
           const found = rr.data.find((x: any) => x.number === route)
           if (found?.start_point && found?.end_point) {
-            setRouteTerminals({ start: found.start_point, end: found.end_point })
+            const t = { start: found.start_point, end: found.end_point }
+            routeTerminalsRef.current = t
+            setRouteTerminals(t)
           }
         }).catch(() => {})
       }
       setDriverInfo(u)
       if (u.active_shift_start) setShiftStarted(true)
-      if (u.active_direction === 'forward' || u.active_direction === 'back') setDirection(u.active_direction)
+      if (u.active_direction === 'forward' || u.active_direction === 'back') {
+        directionRef.current = u.active_direction
+        setDirection(u.active_direction)
+      }
       try {
         const savedRivals: string[] = u.rival_routes_json ? JSON.parse(u.rival_routes_json) : []
         setRivals2(savedRivals)
@@ -130,8 +137,10 @@ export default function DriverMap() {
   }
 
   const switchDirection = (d: 'forward' | 'back') => {
+    directionRef.current = d
     setDirection(d)
     updateMe({ active_direction: d }).catch(() => {})
+    loadAndFetch()
   }
 
   const dirLabel = (d: 'forward' | 'back') => {
@@ -245,8 +254,12 @@ export default function DriverMap() {
         if (myVeh.direction && routeTerminals) {
           const dest = (myVeh.direction as string).split(' → ')[1]?.trim() ?? ''
           const d = dest.toLowerCase().includes(routeTerminals.end.toLowerCase().slice(0, 6)) ? 'forward' : 'back'
-          setDirection(d)
-          updateMe({ active_direction: d }).catch(() => {})
+          if (directionRef.current !== d) {
+            directionRef.current = d
+            setDirection(d)
+            updateMe({ active_direction: d }).catch(() => {})
+            loadAndFetch()
+          }
         }
       } catch {
         if (wasNavTracked.current !== false) {
@@ -291,14 +304,16 @@ export default function DriverMap() {
     try {
       setRivalRoutes(rivals2)
       if (rivals2.length === 0) { setRivals([]); return }
-      const ourDest = direction === 'forward' ? (routeTerminals?.end ?? '') : (routeTerminals?.start ?? '')
+      const terminals = routeTerminalsRef.current
+      const dir = directionRef.current
+      const ourDest = terminals ? (dir === 'forward' ? terminals.end : terminals.start) : ''
       const res = await getRivalsLive(rivals2, driverRoute !== '—' ? driverRoute : undefined, ourDest || undefined)
       setRivals(res.data)
       setLiveError(false)
     } catch {
       setLiveError(true)
     }
-  }, [driverRoute, direction, routeTerminals])
+  }, [driverRoute, rivals2])
 
   useEffect(() => {
     loadAndFetch()

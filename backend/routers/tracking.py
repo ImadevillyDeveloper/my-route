@@ -265,15 +265,21 @@ def _count_ordered_common_stops(stops_a: list, stops_b: list, threshold_m: float
 
 def _compute_and_save_mapping(our_route: str, comp_route: str, db: Session) -> int:
     """Compute stop-sequence direction mapping and upsert to DB. Returns pairs saved."""
-    our_mr_id  = _find_mr_id(our_route, db)
-    comp_mr_id = _find_mr_id(comp_route, db)
-    if not our_mr_id or not comp_mr_id:
+    our_mr_id = _find_mr_id(our_route, db)
+    if not our_mr_id:
         return 0
 
+    # Fetch and persist our route's stop list regardless of competitor status,
+    # so it's available in route_stop_lists for future calls even when our buses
+    # are not on the line according to Navitrans.
     _route_stops_cache.pop(our_mr_id, None)
-    _route_stops_cache.pop(comp_mr_id, None)
+    our_stops = _fetch_route_stops(our_mr_id, our_route, db)
 
-    our_stops  = _fetch_route_stops(our_mr_id, our_route, db)
+    comp_mr_id = _find_mr_id(comp_route, db)
+    if not comp_mr_id:
+        return 0
+
+    _route_stops_cache.pop(comp_mr_id, None)
     comp_stops = _fetch_route_stops(comp_mr_id, comp_route, db)
 
     saved = 0
@@ -295,8 +301,9 @@ def _compute_and_save_mapping(our_route: str, comp_route: str, db: Session) -> i
                     competitor_route_number=comp_route,
                 ).first()
                 if existing:
-                    existing.competitor_destination = comp_dest
-                    existing.common_stop_count = count
+                    if count > existing.common_stop_count:
+                        existing.competitor_destination = comp_dest
+                        existing.common_stop_count = count
                 else:
                     db.add(models.CompetitorDirectionMap(
                         our_route_number=our_route,
@@ -305,6 +312,7 @@ def _compute_and_save_mapping(our_route: str, comp_route: str, db: Session) -> i
                         competitor_destination=comp_dest,
                         common_stop_count=count,
                     ))
+                    db.flush()  # make the new row visible to subsequent filter_by queries
                 saved += 1
     db.commit()
     return saved
@@ -335,11 +343,13 @@ def _refresh_and_persist_mr_ids(db: Session) -> None:
     with _cache_lock:
         _live_cache["vehicles"] = vehicles
         _live_cache["ts"] = time.time()
+    seen: set[str] = set()
     for v in vehicles:
         mr_num = str(v.get("mr_num", "")).strip()
         mr_id  = str(v.get("mr_id",  "")).strip()
-        if not mr_num or not mr_id:
+        if not mr_num or not mr_id or mr_num in seen:
             continue
+        seen.add(mr_num)
         _mr_id_cache[mr_num] = mr_id
         existing = db.query(models.RouteNavitransId).filter_by(route_number=mr_num).first()
         if existing:
@@ -378,19 +388,30 @@ def get_rivals_live(
     route_set = set(route_list)
     all_vehicles = _get_cached_units()
 
-    # Passively persist any newly discovered mr_ids to DB
-    new_mr_ids = [
-        (str(v.get("mr_num", "")).strip(), str(v.get("mr_id", "")).strip())
-        for v in all_vehicles
-        if str(v.get("mr_num", "")).strip() and str(v.get("mr_id", "")).strip()
-           and str(v.get("mr_num", "")).strip() not in _mr_id_cache
-    ]
+    # Passively persist any newly discovered mr_ids to DB (deduplicated)
+    _new: dict[str, str] = {}
+    for v in all_vehicles:
+        mr_num = str(v.get("mr_num", "")).strip()
+        mr_id  = str(v.get("mr_id",  "")).strip()
+        if mr_num and mr_id and mr_num not in _mr_id_cache and mr_num not in _new:
+            _new[mr_num] = mr_id
+    new_mr_ids = list(_new.items())
     if new_mr_ids:
         for mr_num, mr_id in new_mr_ids:
             _mr_id_cache[mr_num] = mr_id
             if not db.query(models.RouteNavitransId).filter_by(route_number=mr_num).first():
                 db.add(models.RouteNavitransId(route_number=mr_num, mr_id=mr_id))
         db.commit()
+        # Auto-compute mapping for newly discovered rival routes that still lack one
+        if our_route:
+            for mr_num, _mr_id in new_mr_ids:
+                if mr_num in route_set:
+                    already = db.query(models.CompetitorDirectionMap).filter_by(
+                        our_route_number=our_route,
+                        competitor_route_number=mr_num,
+                    ).first()
+                    if not already:
+                        _compute_and_save_mapping(our_route, mr_num, db)
 
     # Build direction filter from DB
     # allowed: routes with a positive direction match -> set of rl_laststation_title values to show

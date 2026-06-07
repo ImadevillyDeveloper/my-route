@@ -402,7 +402,7 @@ export default function EntMap() {
       {showPanel && (
         <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
           onClick={e => { if (e.target === e.currentTarget) setShowPanel(false) }}>
-          <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 390, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
+          <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 390, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
 
             <div style={{ padding: '18px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0', flexShrink: 0 }}>
               <div>
