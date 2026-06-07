@@ -53,6 +53,13 @@ export const getRivalsLive = (routes: string[], ourRoute?: string, ourDestinatio
 }
 export const computeCompetitorMapping = (ourRoute: string, competitorRoute: string) =>
   api.post('/tracking/competitor-mapping', null, { params: { our_route: ourRoute, competitor_route: competitorRoute } })
+export const getHint = (
+  ourRoute: string, ourLat: number, ourLng: number,
+  ourSpeed: number, ourDestination: string
+) => api.get('/tracking/hint', { params: {
+  our_route: ourRoute, our_lat: ourLat, our_lng: ourLng,
+  our_speed: ourSpeed, our_destination: ourDestination,
+}})
 export const requestRecommendation = (direction: string) =>
   api.post('/tracking/request', { direction });
 

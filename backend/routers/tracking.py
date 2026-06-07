@@ -247,6 +247,25 @@ def _fetch_route_stops(mr_id: str, route_number: str = "", db: Optional[Session]
         return {}
 
 
+def _nearest_stop_idx(lat: float, lng: float, stops: list) -> tuple[int, float]:
+    """Returns (index, distance_m) of the nearest stop."""
+    best_idx, best_dist = 0, float("inf")
+    for i, s in enumerate(stops):
+        d = _haversine_m(lat, lng, s["st_lat"], s["st_lng"])
+        if d < best_dist:
+            best_dist, best_idx = d, i
+    return best_idx, best_dist
+
+
+def _route_dist_m(from_idx: int, to_idx: int, stops: list) -> float:
+    """Cumulative distance along stop sequence from from_idx to to_idx."""
+    total = 0.0
+    for i in range(from_idx, to_idx):
+        total += _haversine_m(stops[i]["st_lat"], stops[i]["st_lng"],
+                              stops[i + 1]["st_lat"], stops[i + 1]["st_lng"])
+    return total
+
+
 def _count_ordered_common_stops(stops_a: list, stops_b: list, threshold_m: float = 80.0) -> int:
     """Count stops common to both lists that appear in the same order (same direction)."""
     matches: list[tuple[int, int]] = []
@@ -479,6 +498,207 @@ def get_rivals_live(
             continue
 
     return result
+
+
+# ── AI Hint endpoint ──────────────────────────────────────────────
+
+@router.get("/hint", response_model=schemas.HintOut)
+def get_hint(
+    our_route: str = Query(...),
+    our_lat: float = Query(...),
+    our_lng: float = Query(...),
+    our_speed: float = Query(0.0),          # km/h
+    our_destination: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return an AI driving hint based on competitor positions and ETAs."""
+    NO_HINT = schemas.HintOut(type="none")
+
+    # 1. Our stop list
+    our_mr_id = _find_mr_id(our_route, db)
+    if not our_mr_id:
+        return NO_HINT
+    stops_data = _fetch_route_stops(our_mr_id, our_route, db)
+    our_rt = next((rt for rt in ("A", "B") if stops_data.get(rt + "_dest") == our_destination), None)
+    if not our_rt:
+        return NO_HINT
+    our_stops = stops_data.get(our_rt, [])
+    if len(our_stops) < 2:
+        return NO_HINT
+
+    our_idx, _ = _nearest_stop_idx(our_lat, our_lng, our_stops)
+    our_spd_ms = max(our_speed / 3.6, 1.0)  # m/s, floor at 1 to avoid ÷0
+
+    # 2. Direction mappings → which rival destinations are valid
+    mappings = db.query(models.CompetitorDirectionMap).filter_by(
+        our_route_number=our_route, our_destination=our_destination
+    ).all()
+    if not mappings:
+        return NO_HINT
+    allowed = {m.competitor_route_number: m.competitor_destination for m in mappings}
+
+    # 3. Scan live vehicles and classify as ahead / behind
+    all_vehicles = _get_cached_units()
+    rivals_ahead: list[tuple[float, dict]] = []   # (dist_m, vehicle)
+    rivals_behind: list[tuple[float, float, float, dict]] = []  # (dist_m, gap_s, r_spd_kmh, v)
+
+    for v in all_vehicles:
+        mr_num = str(v.get("mr_num", "")).strip()
+        if mr_num not in allowed:
+            continue
+        last_st = str(v.get("rl_laststation_title", "") or "").strip()
+        if last_st != allowed[mr_num]:
+            continue
+
+        r_lat = float(v.get("u_lat", 0) or 0)
+        r_lng = float(v.get("u_long", 0) or 0)
+        r_spd_kmh = float(v.get("u_speed", 0) or 0)
+        r_spd_ms = max(r_spd_kmh / 3.6, 1.0)
+        if not r_lat or not r_lng:
+            continue
+
+        r_idx, _ = _nearest_stop_idx(r_lat, r_lng, our_stops)
+
+        if r_idx > our_idx:
+            # Rival is ahead on our stop sequence
+            dist = _route_dist_m(our_idx, r_idx, our_stops)
+            rivals_ahead.append((dist, v))
+
+        elif r_idx < our_idx:
+            # Rival is behind — find next conflict: next stop ahead of us both
+            conflict_idx = min(our_idx + 1, len(our_stops) - 1)
+
+            # Our ETA to conflict stop
+            our_dist_to_conf = _route_dist_m(our_idx, conflict_idx, our_stops)
+            our_eta = our_dist_to_conf / our_spd_ms
+
+            # Rival ETA to conflict stop (straight-line from their position)
+            r_dist_to_conf = _haversine_m(
+                r_lat, r_lng,
+                our_stops[conflict_idx]["st_lat"], our_stops[conflict_idx]["st_lng"],
+            )
+            r_eta = r_dist_to_conf / r_spd_ms
+
+            gap_s = r_eta - our_eta           # positive = we arrive first
+            dist_behind = _route_dist_m(r_idx, our_idx, our_stops)
+            rivals_behind.append((dist_behind, gap_s, r_spd_kmh, v))
+
+    rivals_ahead.sort(key=lambda x: x[0])
+    rivals_behind.sort(key=lambda x: x[0])
+
+    nearest_ahead = rivals_ahead[0] if rivals_ahead else None
+    nearest_behind = rivals_behind[0] if rivals_behind else None
+
+    # ── Decision logic ────────────────────────────────────────────
+    AHEAD_DANGER_M   = 800    # rival ahead within this distance is a threat
+    BEHIND_DANGER_M  = 2000   # rival behind within this distance matters
+    GAP_TIGHT_S      = 60     # less than this → rival behind is threatening
+    GAP_RACE_S       = 120    # can try to widen gap if less than this
+
+    hint_type = "none"
+    message: str | None = None
+    ahead_info: schemas.HintRival | None = None
+    behind_info: schemas.HintRival | None = None
+
+    # Helper
+    def _plate(v: dict) -> str | None:
+        p = str(v.get("u_statenum", "") or "").strip()
+        return p if p else None
+
+    # -- Ahead rival handling --
+    if nearest_ahead:
+        dist_m, v = nearest_ahead
+        mr = str(v.get("mr_num", ""))
+        ahead_info = schemas.HintRival(route=mr, plate=_plate(v), distance_m=int(dist_m))
+
+        if dist_m <= AHEAD_DANGER_M:
+            # Check whether slowing is safe given rival behind
+            behind_ok = (
+                not nearest_behind
+                or nearest_behind[0] > BEHIND_DANGER_M
+                or nearest_behind[1] > GAP_TIGHT_S * 2  # big comfortable gap behind
+            )
+            if behind_ok:
+                hint_type = "slow_down"
+                message = (
+                    f"Маршрут {mr} в {int(dist_m)} м впереди — "
+                    f"замедлитесь, пропустите его вперёд"
+                )
+            else:
+                # Ahead close AND behind threatening → hold speed
+                bm = str(nearest_behind[3].get("mr_num", ""))
+                hint_type = "maintain"
+                message = (
+                    f"Маршрут {mr} в {int(dist_m)} м впереди, "
+                    f"маршрут {bm} настигает сзади — держите скорость"
+                )
+
+    # -- Behind rival handling (only when no dangerous rival ahead) --
+    if nearest_behind and (not nearest_ahead or nearest_ahead[0] > AHEAD_DANGER_M):
+        dist_m, gap_s, r_spd_kmh, v = nearest_behind
+        mr = str(v.get("mr_num", ""))
+        behind_info = schemas.HintRival(
+            route=mr, plate=_plate(v),
+            distance_m=int(dist_m), gap_s=int(gap_s)
+        )
+
+        if dist_m <= BEHIND_DANGER_M:
+            if gap_s < 0:
+                # Rival arrives at next conflict stop before us
+                hint_type = "slow_down"
+                message = (
+                    f"Маршрут {mr} в {int(dist_m)} м сзади и опередит вас "
+                    f"на следующей остановке на {int(-gap_s)} с — "
+                    f"сбросьте скорость и пропустите"
+                )
+            elif gap_s <= GAP_TIGHT_S:
+                # We arrive first, but barely — speed up to widen gap
+                if our_speed < 50:   # only suggest if not already fast
+                    hint_type = "speed_up"
+                    message = (
+                        f"Маршрут {mr} в {int(dist_m)} м сзади — "
+                        f"вы опередите его на {int(gap_s)} с. "
+                        f"Ускорьтесь, чтобы увеличить отрыв"
+                    )
+                else:
+                    hint_type = "maintain"
+                    message = (
+                        f"Маршрут {mr} в {int(dist_m)} м сзади — "
+                        f"вы опережаете на {int(gap_s)} с. Держите скорость"
+                    )
+            elif gap_s <= GAP_RACE_S:
+                hint_type = "maintain"
+                message = (
+                    f"Маршрут {mr} в {int(dist_m)} м сзади — "
+                    f"вы опережаете на {int(gap_s)} с. Всё хорошо"
+                )
+            # gap > GAP_RACE_S — no hint needed, comfortable lead
+
+    # Always return a meaningful status
+    if hint_type == "none":
+        if not mappings:
+            message = "Конкурентные маршруты не настроены"
+        elif not all_vehicles:
+            message = "Нет данных о транспорте"
+        elif not rivals_ahead and not rivals_behind:
+            message = "Конкурентов поблизости нет — ситуация спокойная"
+        else:
+            # rivals exist but outside danger zones — show nearest info
+            hint_type = "maintain"
+            parts = []
+            if nearest_ahead:
+                parts.append(f"маршрут {nearest_ahead[1].get('mr_num','')} в {int(nearest_ahead[0])} м впереди")
+            if nearest_behind:
+                parts.append(f"маршрут {nearest_behind[3].get('mr_num','')} в {int(nearest_behind[0])} м сзади")
+            message = "Конкурентная ситуация стабильная: " + ", ".join(parts)
+
+    return schemas.HintOut(
+        type=hint_type,
+        message=message,
+        ahead=ahead_info,
+        behind=behind_info,
+    )
 
 
 @router.get("/rivals", response_model=list[schemas.RivalOut])

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe } from '../../api/client'
+import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
@@ -64,7 +64,7 @@ export default function DriverMap() {
   const [position, setPosition]     = useState<Pos | null>(null)
   const [geoError, setGeoError]     = useState<string | null>(null)
   const [rivals, setRivals]         = useState<any[]>([])
-  const [hint, setHint]             = useState<{ message: string; speed: number } | null>(null)
+  const [hint, setHint]             = useState<{ type: string; message: string | null; ahead?: any; behind?: any } | null>(null)
   const [mapReady, setMapReady]     = useState(false)
   const [voiceOn, setVoiceOn]       = useState(true)
   const [rivalInfo, setRivalInfo]   = useState<RivalInfo | null>(null)
@@ -86,6 +86,7 @@ export default function DriverMap() {
   const directionRef = useRef<'forward' | 'back'>('forward')
   const [shiftStarted, setShiftStarted] = useState(false)
   const [navDriverPos, setNavDriverPos] = useState<{ lat: number; lng: number; speed: number } | null>(null)
+  const navDriverPosRef = useRef<{ lat: number; lng: number; speed: number } | null>(null)
   const [isNavTracked, setIsNavTracked] = useState(false)
   const [navDirection, setNavDirection] = useState<string | null>(null)
   const [navToast, setNavToast]         = useState<{ text: string; type: 'ok' | 'warn' } | null>(null)
@@ -181,13 +182,14 @@ export default function DriverMap() {
     ? ALL_ROUTES.filter(r => r.toLowerCase().includes(rivalInput.toLowerCase()) && !rivals2.includes(r)).slice(0, 8)
     : []
 
+  const voiceOnRef = useRef(true)
   const speak = useCallback((text: string) => {
-    if (!voiceOn || !window.speechSynthesis) return
+    if (!voiceOnRef.current || !window.speechSynthesis) return
     window.speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(text)
     u.lang = 'ru-RU'; u.rate = 0.9
     window.speechSynthesis.speak(u)
-  }, [voiceOn])
+  }, [])
 
   // Sync positionRef so click handlers always get the latest driver position
   useEffect(() => { positionRef.current = position }, [position])
@@ -247,7 +249,9 @@ export default function DriverMap() {
           showToast('Синхронизировано с данными Навитранса', 'ok')
         }
         wasNavTracked.current = true
-        setNavDriverPos({ lat: navLat, lng: navLng, speed: Math.round(parseFloat(String(myVeh.speed ?? 0))) })
+        const np = { lat: navLat, lng: navLng, speed: Math.round(parseFloat(String(myVeh.speed ?? 0))) }
+        navDriverPosRef.current = np
+        setNavDriverPos(np)
         setNavDirection(myVeh.direction || null)
         setIsNavTracked(true)
         // Синхронизируем ручной переключатель с реальным направлением
@@ -299,17 +303,34 @@ export default function DriverMap() {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  // ── Загрузка и поллинг конкурентов (10 с) ──────────────────────
+  // ── Загрузка и поллинг конкурентов + подсказок (10 с) ───────────
   const loadAndFetch = useCallback(async () => {
     try {
       setRivalRoutes(rivals2)
-      if (rivals2.length === 0) { setRivals([]); return }
       const terminals = routeTerminalsRef.current
       const dir = directionRef.current
       const ourDest = terminals ? (dir === 'forward' ? terminals.end : terminals.start) : ''
+
+      if (rivals2.length === 0) { setRivals([]); setHint(null); return }
+
       const res = await getRivalsLive(rivals2, driverRoute !== '—' ? driverRoute : undefined, ourDest || undefined)
       setRivals(res.data)
       setLiveError(false)
+
+      // Fetch AI hint — use Navitrans position if tracked, otherwise GPS
+      const navPos = navDriverPosRef.current
+      const gpsPos = positionRef.current
+      const activePos = navPos ?? gpsPos
+      if (driverRoute !== '—' && ourDest && activePos) {
+        try {
+          const hr = await getHint(driverRoute, activePos.lat, activePos.lng, activePos.speed, ourDest)
+          setHint(prev => {
+            const newHint = hr.data
+            if (newHint.type !== prev?.type && newHint.message) speak(newHint.message)
+            return newHint
+          })
+        } catch { /* hint is optional */ }
+      }
     } catch {
       setLiveError(true)
     }
@@ -648,7 +669,7 @@ export default function DriverMap() {
         <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: '4px 10px', color: 'white', fontWeight: 800, fontSize: 15 }}>
           №{driverRoute}
         </div>
-        <button onClick={() => setVoiceOn(v => !v)}
+        <button onClick={() => setVoiceOn(v => { voiceOnRef.current = !v; return !v })}
           style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontSize: 16 }}>
           {voiceOn ? '🔊' : '🔇'}
         </button>
@@ -738,26 +759,36 @@ export default function DriverMap() {
           </div>
         )}
 
-        {hint ? (
-          <div style={{ background: 'var(--orange-bg)', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 18 }}>⚡</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{hint.message}</span>
-            <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 16, cursor: 'pointer' }}>✕</button>
-          </div>
-        ) : rivals.length > 0 ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)', flex: 1 }}>
-              Конкурентов на маршрутах: <strong>{rivals.length}</strong>
-            </span>
-            <button className="btn btn-primary" onClick={askAI} style={{ width: 'auto', padding: '8px 16px', fontSize: 13, borderRadius: 20 }}>
-              ⚡ Совет
-            </button>
-          </div>
-        ) : (
-          <button className="btn btn-primary" onClick={askAI} style={{ borderRadius: 12 }}>
-            ⚡ Получить ИИ-подсказку
-          </button>
-        )}
+        {(() => {
+          if (!hint) return (
+            <div style={{ background: '#F5F5F5', border: '1.5px solid #E0E0E0', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18 }}>💡</span>
+              <span style={{ fontSize: 13, color: '#999' }}>Анализирую конкурентную обстановку…</span>
+            </div>
+          )
+          const cfg = hint.type === 'slow_down'
+            ? { bg: '#FFF3F3', border: '#FFCDD2', icon: '🛑', color: '#C62828' }
+            : hint.type === 'speed_up'
+            ? { bg: '#F1F8E9', border: '#C5E1A5', icon: '🚀', color: '#2E7D32' }
+            : hint.type === 'maintain'
+            ? { bg: '#FFF8E1', border: '#FFE082', icon: '💡', color: '#E65100' }
+            : { bg: '#F5F5F5', border: '#E0E0E0', icon: '✅', color: '#555' }
+          return (
+            <div style={{ background: cfg.bg, border: `1.5px solid ${cfg.border}`, borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <span style={{ fontSize: 20, lineHeight: 1.3 }}>{cfg.icon}</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: cfg.color, lineHeight: 1.4 }}>{hint.message}</p>
+                {(hint.ahead || hint.behind) && (
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#888', lineHeight: 1.4 }}>
+                    {hint.ahead && `▲ №${hint.ahead.route} — ${hint.ahead.distance_m} м впереди`}
+                    {hint.ahead && hint.behind && ' · '}
+                    {hint.behind && `▼ №${hint.behind.route} — ${hint.behind.distance_m} м сзади${hint.behind.gap_s != null ? `, разрыв ${hint.behind.gap_s} с` : ''}`}
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {rivalInfo && (

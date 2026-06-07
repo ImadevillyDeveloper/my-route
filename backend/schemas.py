@@ -121,6 +121,19 @@ class RivalOut(BaseModel):
     status: Optional[str] = None
 
 
+class HintRival(BaseModel):
+    route: str
+    plate: Optional[str] = None
+    distance_m: int
+    gap_s: Optional[int] = None  # seconds we arrive before rival (positive = we first)
+
+class HintOut(BaseModel):
+    type: str  # "slow_down" | "speed_up" | "maintain" | "none"
+    message: Optional[str] = None
+    ahead: Optional[HintRival] = None
+    behind: Optional[HintRival] = None
+
+
 class TrackingRequest(BaseModel):
     direction: str
 
