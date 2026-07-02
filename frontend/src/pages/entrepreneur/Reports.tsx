@@ -196,7 +196,7 @@ export default function EntReports() {
   // ── PENDING VIEW ──────────────────────────────────────────────────
   if (view === 'pending') {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden', paddingTop: 'var(--header-height)' }}>
+      <div style={{ minHeight: '100svh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden', paddingTop: 'var(--header-height)' }}>
         <div className="app-header">
           <button className="app-header-back" onClick={() => setView('overview')}>←</button>
           <span className="app-header-title">Ожидают проверки</span>
@@ -217,7 +217,7 @@ export default function EntReports() {
   // ── REVIEWED VIEW ─────────────────────────────────────────────────
   if (view === 'reviewed') {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden', paddingTop: 'var(--header-height)' }}>
+      <div style={{ minHeight: '100svh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden', paddingTop: 'var(--header-height)' }}>
         <div className="app-header">
           <button className="app-header-back" onClick={() => setView('overview')}>←</button>
           <span className="app-header-title">Проверенные отчёты</span>
@@ -237,7 +237,7 @@ export default function EntReports() {
 
   // ── OVERVIEW VIEW ─────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden', paddingTop: 'var(--header-height)' }}>
+    <div style={{ minHeight: '100svh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden', paddingTop: 'var(--header-height)' }}>
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мои Отчёты</span>

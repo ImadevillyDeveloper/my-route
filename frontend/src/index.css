@@ -46,7 +46,7 @@ html, body {
 
 #root {
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100svh;
   max-width: 430px;
   margin: 0 auto;
   background: var(--bg-gray);
@@ -91,7 +91,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 
 /* ── Page ── */
 .page {
-  min-height: 100vh; min-height: 100dvh;
+  min-height: 100vh; min-height: 100svh;
   background: var(--bg-gray);
   padding-top: var(--header-height);
   padding-bottom: var(--nav-safe);
@@ -297,7 +297,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 
 /* ── Sidebar nav (desktop only) ── */
 .sidebar-nav { display: none; }
-.layout-root  { min-height: 100dvh; }
+.layout-root  { min-height: 100svh; }
 
 /* ── Desktop layout (≥ 640px) ── */
 @media (min-width: 640px) {
