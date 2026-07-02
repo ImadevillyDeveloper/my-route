@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getReports, getVehicles } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import type { Report } from '../../types'
 
@@ -198,7 +197,6 @@ export default function EntReports() {
   if (view === 'pending') {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
-        <StatusBar />
         <div className="app-header">
           <button className="app-header-back" onClick={() => setView('overview')}>←</button>
           <span className="app-header-title">Ожидают проверки</span>
@@ -220,7 +218,6 @@ export default function EntReports() {
   if (view === 'reviewed') {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
-        <StatusBar />
         <div className="app-header">
           <button className="app-header-back" onClick={() => setView('overview')}>←</button>
           <span className="app-header-title">Проверенные отчёты</span>
@@ -241,7 +238,6 @@ export default function EntReports() {
   // ── OVERVIEW VIEW ─────────────────────────────────────────────────
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-gray)', overflow: 'hidden' }}>
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мои Отчёты</span>

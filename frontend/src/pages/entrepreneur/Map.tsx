@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getVehiclesMap, getDrivers, getRivalsLive } from '../../api/client'
 import { getRoutesWithOverrides } from '../../api/routes'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
 declare global { interface Window { ymaps: any } }
@@ -321,7 +320,6 @@ export default function EntMap() {
 
   return (
     <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
-      <StatusBar />
 
       {/* Header */}
       <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getReport } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import type { Report } from '../../types'
 
@@ -40,7 +39,6 @@ export default function DriverReportDetail() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Просмотр Отчёта</span>

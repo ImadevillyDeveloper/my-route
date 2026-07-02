@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getDrivers, updateDriver, deleteDriver, uploadDriverPhoto, getVehicles, getRoutes, resolveAssetUrl } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import { formatPhone, formatVU } from '../../utils/format'
 import { useAuthStore } from '../../store/auth'
@@ -235,10 +234,9 @@ export default function EntDriverDetail() {
     catch { setDeleting(false); setConfirmDelete(false) }
   }
 
-  if (loading) return <div className="page"><StatusBar /><LogoLoader fullPage /></div>
+  if (loading) return <div className="page"><LogoLoader fullPage /></div>
   if (!driver) return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мои Водители</span>
@@ -254,7 +252,6 @@ export default function EntDriverDetail() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мои Водители</span>

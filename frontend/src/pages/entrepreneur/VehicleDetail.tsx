@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, getRoutes, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle, resolveAssetUrl } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import { useAuthStore } from '../../store/auth'
 import { formatPlate } from '../../utils/format'
@@ -264,7 +263,6 @@ export default function EntVehicleDetail() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мои ТС</span>

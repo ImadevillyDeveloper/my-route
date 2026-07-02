@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { sendSupport, getMe, updateMe, computeCompetitorMapping, getKnownRoutes } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 
 const TOPICS = [
   { value: 'bug',      label: '🐛 Техническая проблема' },
@@ -100,7 +99,6 @@ export default function DriverSettings() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Настройки</span>

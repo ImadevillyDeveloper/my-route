@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getVehicles, getRoutes, createVehicle, updateInsurance, updateMaintenance, getDrivers, updateDriver, uploadVehiclePhoto } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import { formatPlate } from '../../utils/format'
 
 const abbr = (n: string) => {
@@ -320,7 +319,6 @@ export default function EntVehicleAdd() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Добавление ТС</span>

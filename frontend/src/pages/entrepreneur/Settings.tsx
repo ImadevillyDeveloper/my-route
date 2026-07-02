@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { getRoutesWithOverrides } from '../../api/routes'
 import { sendSupport } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 
 const FAV_ROUTE_KEY = 'ent_favorite_route'
 
@@ -105,7 +104,6 @@ export default function EntSettings() {
 
   return (
     <div className="page" style={{ position: 'relative' }}>
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Настройки</span>

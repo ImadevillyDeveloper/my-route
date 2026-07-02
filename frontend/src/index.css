@@ -22,7 +22,6 @@
   --nav-height: 62px;
   --nav-safe: calc(62px + env(safe-area-inset-bottom, 0px));
   --header-height: 52px;
-  --status-height: 24px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -40,6 +39,9 @@ html, body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
   height: 100%;
+  /* Block pinch/double-tap zoom on the page; map containers set their own
+     touch-action to keep their internal pinch-to-zoom working. */
+  touch-action: manipulation;
 }
 
 #root {
@@ -56,25 +58,19 @@ a { color: inherit; text-decoration: none; }
 button { cursor: pointer; border: none; outline: none; font-family: inherit; }
 input, textarea, select { font-family: inherit; outline: none; }
 
-/* ── Status bar ── */
-.status-bar {
-  background: var(--orange);
-  height: var(--status-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-}
-.status-bar-time { color: white; font-size: 12px; font-weight: 700; }
-.status-bar-right { display: flex; align-items: center; gap: 4px; color: white; font-size: 11px; font-weight: 600; }
-
 /* ── App header ── */
 .app-header {
+  position: fixed;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 430px;
+  z-index: 100;
   background: var(--orange);
-  height: var(--header-height);
+  height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding-left: 14px;
+  padding-right: 14px;
   gap: 10px;
 }
 .app-header-title {
@@ -95,7 +91,12 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 
 /* ── Page ── */
-.page { min-height: 100vh; min-height: 100dvh; background: var(--bg-gray); padding-bottom: var(--nav-safe); }
+.page {
+  min-height: 100vh; min-height: 100dvh;
+  background: var(--bg-gray);
+  padding-top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  padding-bottom: var(--nav-safe);
+}
 .page-scroll { overflow-y: auto; }
 
 /* ── White card ── */
@@ -376,6 +377,7 @@ input, textarea, select { font-family: inherit; outline: none; }
     min-height: unset;
     height: 100dvh;
     overflow-y: auto;
+    padding-top: 0;
     padding-bottom: 0;
     min-width: 0;
   }
@@ -383,12 +385,11 @@ input, textarea, select { font-family: inherit; outline: none; }
   /* Bottom nav: hide on desktop */
   .bottom-nav { display: none !important; }
 
-  /* Status bar (fake phone bar): hide on desktop */
-  .status-bar { display: none !important; }
-
-  /* App header: sticky on desktop */
+  /* App header: sticky (not fixed) on desktop, and no longer width-constrained to 430px */
   .app-header {
     position: sticky;
+    left: auto; transform: none;
+    width: auto; max-width: none;
     top: 0;
     z-index: 50;
   }

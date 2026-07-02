@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getDrivers, resolveAssetUrl } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
 interface Driver {
@@ -62,7 +61,6 @@ export default function EntDrivers() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">{filterRoute ? `Водители маршрута ${filterRoute}` : 'Мои Водители'}</span>

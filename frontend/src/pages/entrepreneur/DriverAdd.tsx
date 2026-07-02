@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getVehicles, getRoutes, createDriver, uploadDriverPhoto } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import { formatVU, formatPhone, capitalizeName } from '../../utils/format'
 
 const CheckCircle = () => (
@@ -158,7 +157,6 @@ export default function EntDriverAdd() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Добавление Водителя</span>

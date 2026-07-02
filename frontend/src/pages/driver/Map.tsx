@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
 declare global { interface Window { ymaps: any } }
@@ -526,8 +525,7 @@ export default function DriverMap() {
     const name  = driverInfo?.full_name     || ''
 
     return (
-      <div className="page" style={{ background: '#F7F7F7' }}>
-        <StatusBar />
+      <div className="page" style={{ background: '#F7F7F7', paddingTop: 0 }}>
         <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
           <div style={{ flex: 1 }}>
@@ -654,7 +652,6 @@ export default function DriverMap() {
 
   return (
     <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
-      <StatusBar />
 
       <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { scanReceipt, createReport, getMe, updateMe } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 
 interface Form {
   shift_number: string
@@ -153,7 +152,6 @@ export default function DriverReport() {
 
   if (showCamera) return (
     <div style={{ position: 'fixed', inset: 0, background: 'black', zIndex: 999, display: 'flex', flexDirection: 'column' }}>
-      <StatusBar dark />
       <div style={{ background: '#111', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <button onClick={stopCamera} style={{ background: 'none', border: 'none', color: 'white', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>ОТМЕНА</button>
         <span style={{ color: 'white', fontWeight: 700, fontSize: 16, flex: 1, textAlign: 'center' }}>Сканирование чека</span>
@@ -182,7 +180,6 @@ export default function DriverReport() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Формирование Отчёта</span>

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getVehicleMaintenance, updateMaintenance, getVehicleInsurance } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 
 type ReminderKey = 'kasko' | 'osago' | 'to'
 interface ReminderConfig { enabled: boolean; daysBefore: number[] }
@@ -85,7 +84,6 @@ export default function VehicleReminders() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Напоминания</span>

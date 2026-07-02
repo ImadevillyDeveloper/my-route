@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loginDriver, loginEntrepreneur, loginGosuslugi } from '../api/client'
 import { useAuthStore } from '../store/auth'
-import StatusBar from '../components/common/StatusBar'
 import { formatVU } from '../utils/format'
 
 function BusLogo() {
@@ -100,7 +99,6 @@ export default function Login() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#F2F2F2' }}>
-      <StatusBar />
 
       {/* Header */}
       <div style={{ background: 'var(--orange)', padding: '10px 16px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>

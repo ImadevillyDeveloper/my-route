@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getVehicles, getDrivers } from '../../api/client'
 import { getRoutesWithOverrides } from '../../api/routes'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
 export default function EntRoutes() {
@@ -51,7 +50,6 @@ export default function EntRoutes() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мои Маршруты</span>

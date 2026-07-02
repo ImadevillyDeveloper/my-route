@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { getMe, uploadDriverPhoto, resolveAssetUrl } from '../../api/client'
 import { useNavigate } from 'react-router-dom'
-import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import type { User } from '../../types'
 
@@ -34,7 +33,7 @@ export default function DriverProfile() {
     e.target.value = ''
   }
 
-  if (!user) return <div className="page"><StatusBar /><LogoLoader fullPage /></div>
+  if (!user) return <div className="page"><LogoLoader fullPage /></div>
 
   const avatarSrc = user.avatar_url ? resolveAssetUrl(user.avatar_url) : null
   const plate     = (user as any).vehicle_plate || '—'
@@ -42,7 +41,6 @@ export default function DriverProfile() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мой ЛК</span>

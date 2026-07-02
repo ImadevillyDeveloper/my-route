@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { getMe, uploadMyPhoto, resolveAssetUrl } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 
 const TILES = [
   { icon: <img src="/bus.png" width="28" height="28" />, title: 'Мои ТС', sub: 'Страховки и техосмотры', to: '/entrepreneur/vehicles' },
@@ -56,7 +55,6 @@ export default function EntProfile() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Мой ЛК</span>

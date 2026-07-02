@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createRoute, getRivalsLive } from '../../api/client'
-import StatusBar from '../../components/common/StatusBar'
 import { capitalizeFirst, formatCert } from '../../utils/format'
 
 function extractTerminals(vehicles: any[]): [string, string] | null {
@@ -63,7 +62,6 @@ export default function EntRouteAdd() {
 
   return (
     <div className="page">
-      <StatusBar />
       <div className="app-header">
         <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
         <span className="app-header-title">Добавление Маршрута</span>
