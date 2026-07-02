@@ -1,4 +1,4 @@
-import os, shutil, random
+import os, random
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -7,8 +7,7 @@ from .. import models, schemas
 from ..schemas import InsuranceOut, MaintenanceOut
 from ..database import get_db
 from ..auth import get_current_user
-
-UPLOAD_DIR = "uploads"
+from ..storage import save_upload
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
@@ -156,10 +155,8 @@ async def upload_vehicle_photo(
     if not v:
         raise HTTPException(404, "Vehicle not found")
     ext = os.path.splitext(file.filename)[1] or ".jpg"
-    fname = f"{UPLOAD_DIR}/vehicle_{vehicle_id}_{random.randint(1000,9999)}{ext}"
-    with open(fname, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    v.avatar_url = f"/{fname}"
+    filename = f"vehicle_{vehicle_id}_{random.randint(1000,9999)}{ext}"
+    v.avatar_url = save_upload(file.file, filename, file.content_type or "image/jpeg")
     db.commit()
     db.refresh(v)
     return _vehicle_out(v, db)

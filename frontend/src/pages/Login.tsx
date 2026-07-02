@@ -230,6 +230,28 @@ export default function Login() {
             </span>
           </button>
         </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: '#DDD', margin: '20px 0 20px' }} />
+
+        {/* For everyone block */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10, textAlign: 'center' }}>
+            Мой.Маршрут — для всех
+          </div>
+          <a
+            href="https://t.me/MyRouteWeb_Bot"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '13px', background: 'white', border: '1.5px solid #E0E0E0', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', fontSize: 15, fontWeight: 600, color: '#333', textDecoration: 'none' }}
+          >
+            <img src="/telegram-logo.png" alt="Telegram" style={{ width: 20, height: 20 }} />
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Telegram-бот</span>
+              <span>🔥Мой.Маршрут - ГЛОНАСС/ЕТК</span>
+            </span>
+          </a>
+        </div>
       </div>
       </div>
 

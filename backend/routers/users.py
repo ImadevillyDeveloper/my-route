@@ -1,11 +1,10 @@
-import os, shutil, random
+import os, random
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..auth import get_current_user
-
-UPLOAD_DIR = "uploads"
+from ..storage import save_upload
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -22,10 +21,8 @@ async def upload_my_photo(
     db: Session = Depends(get_db),
 ):
     ext = os.path.splitext(file.filename)[1] or ".jpg"
-    fname = f"{UPLOAD_DIR}/user_{current_user.id}_{random.randint(1000,9999)}{ext}"
-    with open(fname, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    current_user.avatar_url = f"/{fname}"
+    filename = f"user_{current_user.id}_{random.randint(1000,9999)}{ext}"
+    current_user.avatar_url = save_upload(file.file, filename, file.content_type or "image/jpeg")
     db.commit()
     db.refresh(current_user)
     return current_user

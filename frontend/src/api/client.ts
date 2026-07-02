@@ -1,7 +1,15 @@
 import axios from 'axios';
 
+// In production, set VITE_API_URL to the deployed backend's origin (e.g. https://my-backend.onrender.com).
+// Left unset in local dev — falls back to the Vite dev-server proxy at /api.
+export const API_ORIGIN = import.meta.env.VITE_API_URL || 'http://localhost:8977';
+
+// Uploaded-file URLs are either backend-relative ("/uploads/x.jpg") or, when
+// storage is Supabase, already absolute — don't double-prefix those.
+export const resolveAssetUrl = (url: string) => (url.startsWith('http') ? url : `${API_ORIGIN}${url}`);
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 15000,
 });
 
@@ -62,6 +70,7 @@ export const getHint = (
 }})
 export const requestRecommendation = (direction: string) =>
   api.post('/tracking/request', { direction });
+export const getKnownRoutes = () => api.get<string[]>('/tracking/routes')
 
 // Reports
 export const scanReceipt = (file: File) => {

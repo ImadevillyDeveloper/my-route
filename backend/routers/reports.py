@@ -1,4 +1,4 @@
-import os, shutil, random
+import os, random
 from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
@@ -6,11 +6,9 @@ from typing import Optional
 from .. import models, schemas
 from ..database import get_db
 from ..auth import get_current_user
+from ..storage import save_upload
 
 router = APIRouter(prefix="/reports", tags=["reports"])
-
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @router.post("/scan", response_model=schemas.ScanResult)
@@ -18,10 +16,9 @@ async def scan_receipt(
     file: UploadFile = File(...),
     current_user: models.User = Depends(get_current_user),
 ):
-    ext = os.path.splitext(file.filename)[1]
-    fname = f"{UPLOAD_DIR}/receipt_{current_user.id}_{random.randint(1000,9999)}{ext}"
-    with open(fname, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    ext = os.path.splitext(file.filename)[1] or ".jpg"
+    filename = f"receipt_{current_user.id}_{random.randint(1000,9999)}{ext}"
+    save_upload(file.file, filename, file.content_type or "image/jpeg")
     return schemas.ScanResult(
         route_number="212",
         shift_date=str(date.today()),

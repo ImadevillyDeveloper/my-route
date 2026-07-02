@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getDrivers, updateDriver, deleteDriver, uploadDriverPhoto, getVehicles, getRoutes } from '../../api/client'
+import { getDrivers, updateDriver, deleteDriver, uploadDriverPhoto, getVehicles, getRoutes, resolveAssetUrl } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import { formatPhone, formatVU } from '../../utils/format'
@@ -247,7 +247,7 @@ export default function EntDriverDetail() {
     </div>
   )
 
-  const avatarSrc = avatarPreview ?? (driver.avatar_url ? `http://localhost:8000${driver.avatar_url}` : null)
+  const avatarSrc = avatarPreview ?? (driver.avatar_url ? resolveAssetUrl(driver.avatar_url) : null)
   const platesToShow = vehicles
     .filter(v => !localRoute || v.route_number === localRoute)
     .map(v => v.plate_number as string)

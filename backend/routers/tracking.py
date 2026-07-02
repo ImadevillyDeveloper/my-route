@@ -1,6 +1,7 @@
 import hashlib
 import math
 import random
+import re
 import threading
 import time
 from typing import Optional
@@ -352,6 +353,33 @@ def _random_coord(lat: float, lng: float, r: float = 0.05):
 @router.get("/position", response_model=schemas.PositionOut)
 def get_position(current_user: models.User = Depends(get_current_user)):
     return schemas.PositionOut(lat=54.9894, lng=73.3780, speed=34.0)
+
+
+def _route_sort_key(route: str) -> tuple:
+    m = re.match(r"(\d+)(.*)", route)
+    if m:
+        return (0, int(m.group(1)), m.group(2))
+    return (1, 0, route)
+
+
+@router.get("/routes", response_model=list[str])
+def get_known_routes(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """All route numbers known from Navitrans — currently live plus previously discovered."""
+    routes: set[str] = set()
+    for v in _get_cached_units():
+        raw = v.get("mr_num")
+        if raw is None:
+            continue
+        num = str(raw).strip()
+        if num and num.lower() != "none":
+            routes.add(num)
+    for row in db.query(models.RouteNavitransId.route_number).all():
+        if row[0] and row[0].strip().lower() != "none":
+            routes.add(row[0])
+    return sorted(routes, key=_route_sort_key)
 
 
 def _refresh_and_persist_mr_ids(db: Session) -> None:

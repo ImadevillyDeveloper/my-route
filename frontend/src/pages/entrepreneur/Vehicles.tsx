@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { getVehicles, getDrivers } from '../../api/client'
+import { getVehicles, getDrivers, resolveAssetUrl } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 
@@ -13,7 +13,7 @@ const abbr = (n: string) => {
 const VehicleAvatar = ({ url }: { url?: string | null }) => (
   <div style={{ width: 52, height: 52, borderRadius: 14, background: '#E8E8E8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
     {url
-      ? <img src={`http://localhost:8000${url}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ? <img src={resolveAssetUrl(url)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       : <img src="/bus.png" width="28" height="28" style={{ opacity: 0.35 }} />
     }
   </div>

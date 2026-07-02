@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
-import { sendSupport, getMe, updateMe, computeCompetitorMapping } from '../../api/client'
+import { sendSupport, getMe, updateMe, computeCompetitorMapping, getKnownRoutes } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 
 const TOPICS = [
@@ -10,32 +10,6 @@ const TOPICS = [
   { value: 'proposal', label: '💡 Предложение' },
   { value: 'other',    label: '📝 Другое' },
 ]
-
-// Все маршруты Омска, подключённые к системе ГЛОНАСС
-const OMSK_ROUTES: { type: string; routes: string[] }[] = [
-  {
-    type: 'Автобусы',
-    routes: [
-      '1','3','5','6Н','8Н','11','12','13','14','16','17','20','21','22','23','24','25','26',
-      '28','29','30','31','32','33','34','36к','37','39','45','46','47Н','49','50','51','52',
-      '55','58','59','60','61','62','63','66','70','71','72','73','77','78','79','80','83',
-      '87','88','89','90','94','95','96','98','100','103','106','109','110','112','116','117',
-      '119','122','125','131','132','136','138','139','140','141','144','145','155','156','157',
-      '158','159','160','161','162','165','168','169','171','172','173','174','177','178','185',
-      '190','191','193','196','197','198','212','214','219','324','327','336','352','355','507П',
-    ],
-  },
-  {
-    type: 'Троллейбусы',
-    routes: ['Тр.2','Тр.3','Тр.4','Тр.7','Тр.12','Тр.15','Тр.16','Тр.67'],
-  },
-  {
-    type: 'Трамваи',
-    routes: ['Тм.1','Тм.2','Тм.4','Тм.7','Тм.8','Тм.9'],
-  },
-]
-
-const ALL_ROUTES = OMSK_ROUTES.flatMap(g => g.routes)
 
 export default function DriverSettings() {
   const [voiceOn, setVoiceOn] = useState(true)
@@ -55,6 +29,7 @@ export default function DriverSettings() {
   const [sent, setSent]                 = useState(false)
   const [sendError, setSendError]       = useState('')
   const [driverRoute, setDriverRoute] = useState('')
+  const [allRoutes, setAllRoutes] = useState<string[]>([])
   const navigate = useNavigate()
   const logout = useAuthStore(s => s.logout)
 
@@ -67,6 +42,8 @@ export default function DriverSettings() {
       } catch {}
       setUserLoaded(true)
     }).catch(() => { setUserLoaded(true) })
+
+    getKnownRoutes().then(r => setAllRoutes(r.data)).catch(() => {})
   }, [])
 
   const openSupport = () => {
@@ -114,7 +91,7 @@ export default function DriverSettings() {
   }, [dropOpen])
 
   const suggestions = inputValue.trim()
-    ? ALL_ROUTES.filter(r =>
+    ? allRoutes.filter(r =>
         r.toLowerCase().includes(inputValue.toLowerCase()) && !rivals.includes(r)
       ).slice(0, 8)
     : []

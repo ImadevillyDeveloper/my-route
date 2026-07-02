@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
-import { getMe, uploadMyPhoto } from '../../api/client'
+import { getMe, uploadMyPhoto, resolveAssetUrl } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 
 const TILES = [
@@ -23,7 +23,7 @@ export default function EntProfile() {
 
   useEffect(() => {
     getMe().then(r => {
-      if (r.data.avatar_url) setAvatar(`http://localhost:8000${r.data.avatar_url}`)
+      if (r.data.avatar_url) setAvatar(resolveAssetUrl(r.data.avatar_url))
     }).catch(() => {})
   }, [])
 
@@ -40,7 +40,7 @@ export default function EntProfile() {
     setAvatar(URL.createObjectURL(file))
     try {
       const res = await uploadMyPhoto(file)
-      if (res.data.avatar_url) setAvatar(`http://localhost:8000${res.data.avatar_url}`)
+      if (res.data.avatar_url) setAvatar(resolveAssetUrl(res.data.avatar_url))
     } catch {}
     e.target.value = ''
   }

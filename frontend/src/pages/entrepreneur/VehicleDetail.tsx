@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, getRoutes, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle } from '../../api/client'
+import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, getRoutes, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle, resolveAssetUrl } from '../../api/client'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
 import { useAuthStore } from '../../store/auth'
@@ -143,7 +143,7 @@ export default function EntVehicleDetail() {
     if (!id) return
     getVehicle(Number(id)).then(r => {
       setV(r.data)
-      if (r.data.avatar_url) setPhoto(`http://localhost:8000${r.data.avatar_url}`)
+      if (r.data.avatar_url) setPhoto(resolveAssetUrl(r.data.avatar_url))
     }).catch(() => {})
     getDrivers().then(r => setAllDrivers(r.data)).catch(() => {})
     getRoutes().then(r => setRoutes(r.data.map((rt: any) => rt.number))).catch(() => {})

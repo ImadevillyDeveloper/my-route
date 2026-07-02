@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getMe, uploadDriverPhoto } from '../../api/client'
+import { getMe, uploadDriverPhoto, resolveAssetUrl } from '../../api/client'
 import { useNavigate } from 'react-router-dom'
 import StatusBar from '../../components/common/StatusBar'
 import LogoLoader from '../../components/common/LogoLoader'
@@ -36,7 +36,7 @@ export default function DriverProfile() {
 
   if (!user) return <div className="page"><StatusBar /><LogoLoader fullPage /></div>
 
-  const avatarSrc = user.avatar_url ? `http://localhost:8000${user.avatar_url}` : null
+  const avatarSrc = user.avatar_url ? resolveAssetUrl(user.avatar_url) : null
   const plate     = (user as any).vehicle_plate || '—'
   const route     = (user as any).route_number  || '—'
 

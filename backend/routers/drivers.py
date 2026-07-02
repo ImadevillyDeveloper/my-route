@@ -1,12 +1,11 @@
-import os, shutil, random
+import os, random
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from .. import models, schemas
 from ..database import get_db
 from ..auth import get_current_user
-
-UPLOAD_DIR = "uploads"
+from ..storage import save_upload
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
 
@@ -119,10 +118,8 @@ async def upload_driver_photo(
     if not user:
         raise HTTPException(404, "Driver not found")
     ext = os.path.splitext(file.filename)[1] or ".jpg"
-    fname = f"{UPLOAD_DIR}/driver_{driver_id}_{random.randint(1000,9999)}{ext}"
-    with open(fname, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    user.avatar_url = f"/{fname}"
+    filename = f"driver_{driver_id}_{random.randint(1000,9999)}{ext}"
+    user.avatar_url = save_upload(file.file, filename, file.content_type or "image/jpeg")
     db.commit()
     db.refresh(user)
     return _driver_out(user, db)
