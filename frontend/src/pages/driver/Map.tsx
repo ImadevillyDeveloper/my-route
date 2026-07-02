@@ -369,7 +369,7 @@ export default function DriverMap() {
       center: [OMSK_LAT, OMSK_LNG], zoom: 14, controls: ['zoomControl'],
     })
     setTimeout(() => ymapRef.current?.container?.fitToViewport(), 50)
-  }, [mapReady])
+  }, [mapReady, shiftStarted])
 
   useEffect(() => {
     const handleResize = () => { if (ymapRef.current) ymapRef.current.container.fitToViewport() }
