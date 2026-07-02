@@ -929,7 +929,7 @@
    "lat": null,
    "lng": null,
    "speed": 0.0,
-   "driver_id": 12,
+   "driver_id": null,
    "created_at": {
     "__type__": "datetime",
     "value": "2026-06-02T18:25:33"
