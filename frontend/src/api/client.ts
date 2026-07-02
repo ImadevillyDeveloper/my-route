@@ -71,6 +71,8 @@ export const getHint = (
 export const requestRecommendation = (direction: string) =>
   api.post('/tracking/request', { direction });
 export const getKnownRoutes = () => api.get<string[]>('/tracking/routes')
+export const getNearestStop = (routeNumber: string, lat: number, lng: number) =>
+  api.get('/tracking/nearest-stop', { params: { route_number: routeNumber, lat, lng } })
 
 // Reports
 export const scanReceipt = (file: File) => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint } from '../../api/client'
+import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint, getNearestStop } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 
 declare global { interface Window { ymaps: any } }
@@ -29,15 +29,17 @@ const ALL_ROUTES: string[] = [
 ]
 
 // Yandex Maps color presets for different routes (deterministic by route string hash)
+// "CircleIcon" (not "CircleDotIcon") renders iconContent text inside the marker,
+// so the route number stays visible on the map without hover/click.
 const ROUTE_PRESETS = [
-  'islands#blueCircleDotIcon',
-  'islands#redCircleDotIcon',
-  'islands#violetCircleDotIcon',
-  'islands#darkblueCircleDotIcon',
-  'islands#greenCircleDotIcon',
-  'islands#pinkCircleDotIcon',
-  'islands#darkgreenCircleDotIcon',
-  'islands#yellowCircleDotIcon',
+  'islands#blueCircleIcon',
+  'islands#redCircleIcon',
+  'islands#violetCircleIcon',
+  'islands#darkblueCircleIcon',
+  'islands#greenCircleIcon',
+  'islands#pinkCircleIcon',
+  'islands#darkgreenCircleIcon',
+  'islands#yellowCircleIcon',
 ]
 function routePreset(route: string): string {
   const hash = route.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
@@ -47,7 +49,7 @@ function routePreset(route: string): string {
 interface Pos { lat: number; lng: number; speed: number }
 interface RivalInfo {
   route: string; model: string; plate: string
-  speed: number; direction: string; minutes: number
+  speed: number; direction: string; minutes: number; stop: string | null
 }
 interface MarkerEntry {
   marker: any
@@ -310,9 +312,11 @@ export default function DriverMap() {
       const dir = directionRef.current
       const ourDest = terminals ? (dir === 'forward' ? terminals.end : terminals.start) : ''
 
-      if (rivals2.length === 0) { setRivals([]); setHint(null); return }
+      // Помимо конкурентов, всегда подтягиваем ТС своего маршрута
+      const routesToFetch = driverRoute !== '—' ? [...new Set([...rivals2, driverRoute])] : rivals2
+      if (routesToFetch.length === 0) { setRivals([]); setHint(null); return }
 
-      const res = await getRivalsLive(rivals2, driverRoute !== '—' ? driverRoute : undefined, ourDest || undefined)
+      const res = await getRivalsLive(routesToFetch, driverRoute !== '—' ? driverRoute : undefined, ourDest || undefined)
       setRivals(res.data)
       setLiveError(false)
 
@@ -379,6 +383,7 @@ export default function DriverMap() {
 
   // ── Метка водителя ───────────────────────────────────────────────
   const effectivePos = (isNavTracked && navDriverPos) ? navDriverPos : position
+  const hasCenteredRef = useRef(false)
 
   useEffect(() => {
     if (!ymapRef.current || !mapReady || !effectivePos) return
@@ -390,8 +395,21 @@ export default function DriverMap() {
     )
     ymapRef.current.geoObjects.add(me)
     myMarkerRef.current = me
-    ymapRef.current.setCenter([effectivePos.lat, effectivePos.lng])
+    // Центрируем карту только на первом определении позиции — дальше пользователь
+    // сам управляет картой, она больше не следует за меткой принудительно.
+    if (!hasCenteredRef.current) {
+      ymapRef.current.setCenter([effectivePos.lat, effectivePos.lng])
+      hasCenteredRef.current = true
+    }
   }, [effectivePos, mapReady])
+
+  const recenterMap = () => {
+    const pos = positionRef.current
+    const np = navDriverPosRef.current
+    const target = (isNavTracked && np) ? np : pos
+    if (!ymapRef.current || !target) return
+    ymapRef.current.setCenter([target.lat, target.lng])
+  }
 
   // ── Плавное обновление маркеров конкурентов ─────────────────────
   useEffect(() => {
@@ -400,9 +418,11 @@ export default function DriverMap() {
     const ymap = ymapRef.current
     const markersMap = rivalMarkersRef.current
 
-    // Build a set of current unit IDs from new data
+    // Build a set of current unit IDs from new data (excluding our own vehicle)
+    const myPlate = driverInfoRef.current?.vehicle_plate
     const incoming = new Map<string, any>()
     rivals.forEach((r: any, i: number) => {
+      if (myPlate && r.plate_number === myPlate) return
       const key = r.unit_id ? String(r.unit_id) : `fallback-${i}`
       incoming.set(key, r)
     })
@@ -426,15 +446,9 @@ export default function DriverMap() {
       const model    = r.model        || 'Автобус'
       const speed    = Math.round(parseFloat(String(r.speed ?? 0)))
       const routeNum = String(r.route_number ?? '—')
-      const balloonContent = [
-        `<b>Маршрут №${routeNum}</b>`,
-        r.direction ? `<span style="color:#888">${r.direction}</span>` : '',
-        model !== 'Автобус' ? `Модель: <b>${model}</b>` : '',
-        plate !== '—' ? `Гос. номер: <b>${plate}</b>` : '',
-        `Скорость: <b>${speed} км/ч</b>`,
-      ].filter(Boolean).join('<br/>')
+      const isOwnRoute = routeNum === driverRouteRef.current
 
-      const preset = routePreset(routeNum)
+      const preset = isOwnRoute ? 'islands#orangeCircleIcon' : routePreset(routeNum)
 
       if (markersMap.has(key)) {
         const entry = markersMap.get(key)!
@@ -463,7 +477,6 @@ export default function DriverMap() {
 
         entry.lat = lat
         entry.lng = lng
-        try { entry.marker.properties.set('balloonContent', balloonContent) } catch {}
       } else {
         // Capture stable values for the click handler closure
         const capturedPlate  = plate
@@ -476,8 +489,8 @@ export default function DriverMap() {
 
         const marker = new window.ymaps.Placemark(
           [lat, lng],
-          { balloonContent, hintContent: `№${routeNum}` },
-          { preset }
+          { iconContent: routeNum, hintContent: `№${routeNum}` },
+          { preset, hasBalloon: false }
         )
         marker.events.add('click', () => {
           // Calculate real distance to competitor at click time
@@ -492,7 +505,15 @@ export default function DriverMap() {
             speed:     capturedSpeed,
             direction: capturedDir,
             minutes,
+            stop:      null,
           })
+          getNearestStop(capturedRoute, capturedLat, capturedLng).then(res => {
+            setRivalInfo(prev =>
+              prev && prev.route === capturedRoute && prev.plate === capturedPlate
+                ? { ...prev, stop: res.data.name ?? null }
+                : prev
+            )
+          }).catch(() => {})
         })
         ymap.geoObjects.add(marker)
         markersMap.set(key, { marker, lat, lng, animFrames: [] })
@@ -696,6 +717,19 @@ export default function DriverMap() {
         )}
         <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 
+        {effectivePos && mapReady && (
+          <button onClick={recenterMap}
+            style={{ position: 'absolute', bottom: 12, right: 12, width: 40, height: 40, borderRadius: '50%', background: 'white', border: 'none', boxShadow: 'var(--shadow-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <line x1="12" y1="2" x2="12" y2="5"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+              <line x1="2" y1="12" x2="5" y2="12"/>
+              <line x1="19" y1="12" x2="22" y2="12"/>
+            </svg>
+          </button>
+        )}
+
         {effectivePos && (
           <div style={{ position: 'absolute', top: 12, right: 12, background: 'white', borderRadius: 12, padding: '8px 12px', boxShadow: 'var(--shadow-md)', textAlign: 'center', minWidth: 52 }}>
             <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--orange)', lineHeight: 1 }}>{effectivePos.speed}</div>
@@ -803,6 +837,7 @@ export default function DriverMap() {
               { label: 'Гос. номер:',        value: rivalInfo.plate },
               { label: 'Скорость:',          value: `${rivalInfo.speed} км/ч` },
               { label: 'Направление:',       value: rivalInfo.direction },
+              { label: 'Текущая остановка:', value: rivalInfo.stop ?? '…' },
               { label: 'Опережает вас на:',  value: `~${rivalInfo.minutes} мин`, color: '#34C759' },
             ].map(({ label, value, color }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #F0F0F0' }}>

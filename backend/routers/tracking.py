@@ -43,6 +43,7 @@ _REFRESH_INTERVAL = 25
 
 _route_stops_cache: dict = {}  # mr_id -> {A: [stops], B: [stops], A_dest: str, B_dest: str}
 _mr_id_cache: dict       = {}  # route_number -> mr_id
+_named_stops_cache: dict = {}  # mr_id -> [{name, lat, lng}, ...]
 
 
 def _ts() -> int:
@@ -246,6 +247,29 @@ def _fetch_route_stops(mr_id: str, route_number: str = "", db: Optional[Session]
         return result
     except Exception:
         return {}
+
+
+def _fetch_named_stops(mr_id: str) -> list[dict]:
+    """Returns [{name, lat, lng}, ...] for a route, deduplicated by stop name."""
+    if mr_id in _named_stops_cache:
+        return _named_stops_cache[mr_id]
+    try:
+        data = _navitrans_call("getRoute", {"mr_id": mr_id})
+        races = data.get("result", {}).get("races", [])
+        stops: list[dict] = []
+        seen: set[str] = set()
+        for race in races:
+            for s in race.get("stopList", []):
+                lat  = s.get("st_lat")
+                lng  = s.get("st_long")
+                name = (s.get("st_title") or s.get("st_name") or "").strip()
+                if lat and lng and name and name not in seen:
+                    stops.append({"name": name, "lat": float(lat), "lng": float(lng)})
+                    seen.add(name)
+        _named_stops_cache[mr_id] = stops
+        return stops
+    except Exception:
+        return []
 
 
 def _nearest_stop_idx(lat: float, lng: float, stops: list) -> tuple[int, float]:
@@ -526,6 +550,25 @@ def get_rivals_live(
             continue
 
     return result
+
+
+@router.get("/nearest-stop", response_model=schemas.NearestStopOut)
+def get_nearest_stop(
+    route_number: str = Query(...),
+    lat: float = Query(...),
+    lng: float = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Nearest named stop on a route to a given point (for rival vehicle info)."""
+    mr_id = _find_mr_id(route_number, db)
+    if not mr_id:
+        return schemas.NearestStopOut(name=None)
+    stops = _fetch_named_stops(mr_id)
+    if not stops:
+        return schemas.NearestStopOut(name=None)
+    best = min(stops, key=lambda s: _haversine_m(lat, lng, s["lat"], s["lng"]))
+    return schemas.NearestStopOut(name=best["name"])
 
 
 # ── AI Hint endpoint ──────────────────────────────────────────────

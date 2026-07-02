@@ -134,6 +134,10 @@ class HintOut(BaseModel):
     behind: Optional[HintRival] = None
 
 
+class NearestStopOut(BaseModel):
+    name: Optional[str] = None
+
+
 class TrackingRequest(BaseModel):
     direction: str
 
