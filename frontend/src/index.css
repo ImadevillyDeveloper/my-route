@@ -65,8 +65,7 @@ input, textarea, select { font-family: inherit; outline: none; }
   width: 100%; max-width: 430px;
   z-index: 100;
   background: var(--orange);
-  height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
-  padding-top: env(safe-area-inset-top, 0px);
+  height: var(--header-height);
   display: flex;
   align-items: center;
   padding-left: 14px;
@@ -94,7 +93,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 .page {
   min-height: 100vh; min-height: 100dvh;
   background: var(--bg-gray);
-  padding-top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  padding-top: var(--header-height);
   padding-bottom: var(--nav-safe);
 }
 .page-scroll { overflow-y: auto; }
