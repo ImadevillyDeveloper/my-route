@@ -63,7 +63,7 @@ export default function EntrepreneurLayout() {
         </div>
       </aside>
 
-      <div className="page">
+      <div className="layout-page">
         <Outlet />
         <nav className="bottom-nav">
           {navItems.map(({ to, label, icon }) => (

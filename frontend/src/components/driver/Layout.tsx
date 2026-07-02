@@ -93,7 +93,7 @@ export default function DriverLayout() {
         </div>
       </aside>
 
-      <div className="page">
+      <div className="layout-page">
         <Outlet />
 
         <nav className="bottom-nav">

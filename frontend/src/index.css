@@ -315,6 +315,15 @@ input, textarea, select { font-family: inherit; outline: none; }
     min-height: unset;
   }
 
+  /* Outer per-role layout wrapper (around <Outlet/> + bottom-nav) — just
+     needs to fill the remaining width next to the sidebar. Actual page
+     sizing/scrolling/header offset lives on the inner .page from each
+     screen component. */
+  .layout-page {
+    flex: 1;
+    min-width: 0;
+  }
+
   /* Sidebar */
   .sidebar-nav {
     display: flex !important;
