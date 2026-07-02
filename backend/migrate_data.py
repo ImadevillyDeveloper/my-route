@@ -1,9 +1,11 @@
 """One-off: load migration_data.json (dumped from the local SQLite DB) into
-the Postgres DB configured via DATABASE_URL. Run once from the Render Shell:
+the Postgres DB configured via DATABASE_URL. Run once:
 
     python -m backend.migrate_data
 
-Safe to re-run: it wipes existing rows in each target table first.
+Refuses to run if the target DB already has more than a handful of users —
+this is meant for a fresh DB that only has the auto-seeded demo drivers,
+not to clobber real data that's already been migrated.
 """
 import json
 import os
@@ -15,6 +17,10 @@ from sqlalchemy import create_engine, text
 from . import models
 
 DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "migration_data.json")
+
+# Guard against wiping a DB that already has real data — main.py's
+# _seed_demo_drivers() creates at most 4 bare driver rows on a fresh DB.
+MAX_EXISTING_USERS_TO_OVERWRITE = 4
 
 
 def _restore(v):
@@ -29,7 +35,7 @@ def _restore(v):
 def main():
     db_url = os.environ.get("DATABASE_URL", "").strip()
     if not db_url:
-        sys.exit("DATABASE_URL is not set in this environment — aborting.")
+        raise RuntimeError("DATABASE_URL is not set in this environment — aborting.")
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
@@ -40,6 +46,13 @@ def main():
     tables = models.Base.metadata.sorted_tables
 
     with engine.begin() as conn:
+        existing_users = conn.execute(text("SELECT COUNT(*) FROM users")).scalar()
+        if existing_users > MAX_EXISTING_USERS_TO_OVERWRITE:
+            raise RuntimeError(
+                f"Refusing to run: users table already has {existing_users} rows "
+                f"(> {MAX_EXISTING_USERS_TO_OVERWRITE}) — looks like real data, not just the demo seed."
+            )
+
         # Wipe existing rows, children first (reverse FK order)
         for t in reversed(tables):
             conn.execute(t.delete())
@@ -67,4 +80,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as e:
+        sys.exit(str(e))
