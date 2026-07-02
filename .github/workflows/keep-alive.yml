@@ -11,4 +11,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping backend
-        run: curl -sf -o /dev/null -w "status: %{http_code}\n" https://my-route-backend.onrender.com/
+        run: |
+          curl -sf -o /dev/null -w "status: %{http_code}\n" https://my-route-backend.onrender.com/
