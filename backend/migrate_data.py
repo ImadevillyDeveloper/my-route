@@ -12,7 +12,7 @@ import os
 import sys
 from datetime import date, datetime
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, Integer
 
 from . import models
 
@@ -66,9 +66,14 @@ def main():
             conn.execute(t.insert(), clean_rows)
             print(f"{t.name}: inserted {len(clean_rows)} rows")
 
-        # Reset autoincrement sequences so future inserts don't collide with migrated IDs
+        # Reset autoincrement sequences so future inserts don't collide with migrated IDs.
+        # Only integer PKs actually get a Postgres sequence — string PKs (e.g. route_number,
+        # mr_id) have autoincrement="auto" by SQLAlchemy default but no real sequence to reset.
         for t in tables:
-            pk_cols = [c for c in t.primary_key.columns if c.autoincrement]
+            pk_cols = [
+                c for c in t.primary_key.columns
+                if c.autoincrement and isinstance(c.type, Integer)
+            ]
             for c in pk_cols:
                 conn.execute(text(
                     f"SELECT setval(pg_get_serial_sequence('{t.name}', '{c.name}'), "
