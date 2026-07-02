@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -89,18 +89,3 @@ if not _USE_SUPABASE:
 @app.get("/")
 def root():
     return {"status": "ok", "app": "Мой.Маршрут"}
-
-
-# TEMPORARY — one-off data migration trigger for the free Render tier (no Shell access).
-# Remove this endpoint once the migration has run.
-@app.post("/admin/migrate")
-def admin_migrate(x_migrate_token: str = Header(default="")):
-    token = os.environ.get("MIGRATE_TOKEN", "")
-    if not token or x_migrate_token != token:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    from .migrate_data import main as run_migration
-    try:
-        run_migration()
-    except RuntimeError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    return {"status": "ok"}
