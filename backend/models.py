@@ -203,6 +203,8 @@ class ChatMessage(Base):
     sender_role = Column(String, nullable=False)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    edited_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class ChatRead(Base):
@@ -215,6 +217,39 @@ class ChatRead(Base):
 
     __table_args__ = (
         UniqueConstraint('user_id', 'conversation_key', name='uq_chat_read_user_conversation'),
+    )
+
+
+class ChatUserState(Base):
+    __tablename__ = "chat_user_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    conversation_key = Column(String, nullable=False)
+    pinned = Column(Boolean, nullable=True)  # None = use the type's default pin state
+    hidden_at = Column(DateTime(timezone=True), nullable=True)  # set when the user "deletes" the chat
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'conversation_key', name='uq_chat_user_state_user_conversation'),
+    )
+
+
+class ChatGroup(Base):
+    __tablename__ = "chat_groups"
+
+    conversation_key = Column(String, primary_key=True)
+    avatar_url = Column(String, nullable=True)
+
+
+class ChatGroupAdmin(Base):
+    __tablename__ = "chat_group_admins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_key = Column(String, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('conversation_key', 'user_id', name='uq_chat_group_admin'),
     )
 
 

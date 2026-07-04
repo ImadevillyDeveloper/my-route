@@ -34,12 +34,20 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         _add_col(conn, "vehicles",     "avatar_url",        "VARCHAR")
         _add_col(conn, "maintenance",  "reminders_json",    "TEXT")
         _add_col(conn, "users",        "hints_enabled",     "BOOLEAN DEFAULT 1")
+        _add_col(conn, "chat_messages", "edited_at",        "DATETIME")
+        _add_col(conn, "chat_messages", "deleted_at",       "DATETIME")
 else:
     # Postgres (Supabase) — same idea, but ALTER TABLE ... ADD COLUMN IF NOT EXISTS
     # is native syntax here, so no manual PRAGMA check is needed.
     with engine.connect() as conn:
         conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS hints_enabled BOOLEAN DEFAULT TRUE"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"
         ))
         conn.commit()
 

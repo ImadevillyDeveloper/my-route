@@ -145,9 +145,17 @@ class ChatConversationOut(BaseModel):
     type: str  # "route" | "dm"
     title: str
     other_user_id: Optional[int] = None
+    avatar_url: Optional[str] = None
     unread: int = 0
     last_message: Optional[str] = None
     last_message_at: Optional[datetime] = None
+    pinned: bool = False
+
+
+class ChatConversationStateUpdate(BaseModel):
+    conversation_key: str
+    pinned: Optional[bool] = None
+    hidden: Optional[bool] = None
 
 
 class ChatMessageOut(BaseModel):
@@ -156,14 +164,42 @@ class ChatMessageOut(BaseModel):
     sender_id: int
     sender_name: str
     sender_role: str
+    sender_avatar_url: Optional[str] = None
     text: str
     created_at: datetime
     mine: bool = False
+    edited: bool = False
+    deleted: bool = False
 
 
 class ChatMessageCreate(BaseModel):
     conversation_key: str
     text: str
+
+
+class ChatMessageUpdate(BaseModel):
+    text: str
+
+
+class ChatRouteMemberOut(BaseModel):
+    id: int
+    full_name: str
+    avatar_url: Optional[str] = None
+    dm_key: str
+    is_admin: bool = False
+    is_owner: bool = False
+
+
+class ChatGroupOut(BaseModel):
+    conversation_key: str
+    avatar_url: Optional[str] = None
+    is_admin: bool = False
+    is_owner: bool = False
+
+
+class ChatGroupAdminUpdate(BaseModel):
+    conversation_key: str
+    user_id: int
 
 
 class TrackingRequest(BaseModel):

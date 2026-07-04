@@ -80,6 +80,25 @@ export const getChatMessages = (conversationKey: string) =>
   api.get('/chat/messages', { params: { conversation_key: conversationKey } })
 export const postChatMessage = (conversationKey: string, text: string) =>
   api.post('/chat/messages', { conversation_key: conversationKey, text })
+export const getChatRouteMembers = (routeNumber: string) =>
+  api.get('/chat/route-members', { params: { route_number: routeNumber } })
+export const setChatConversationState = (conversationKey: string, state: { pinned?: boolean; hidden?: boolean }) =>
+  api.put('/chat/conversations/state', { conversation_key: conversationKey, ...state })
+export const editChatMessage = (messageId: number, text: string) =>
+  api.put(`/chat/messages/${messageId}`, { text })
+export const deleteChatMessage = (messageId: number) =>
+  api.delete(`/chat/messages/${messageId}`)
+export const getChatGroup = (conversationKey: string) =>
+  api.get('/chat/group', { params: { conversation_key: conversationKey } })
+export const uploadChatGroupAvatar = (conversationKey: string, file: File) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api.post('/chat/group/avatar', fd, { params: { conversation_key: conversationKey } })
+}
+export const addChatGroupAdmin = (conversationKey: string, userId: number) =>
+  api.post('/chat/group/admins', { conversation_key: conversationKey, user_id: userId })
+export const removeChatGroupAdmin = (conversationKey: string, userId: number) =>
+  api.delete(`/chat/group/admins/${userId}`, { params: { conversation_key: conversationKey } })
 
 // Reports
 export const scanReceipt = (file: File) => {

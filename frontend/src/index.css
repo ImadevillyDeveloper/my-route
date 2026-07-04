@@ -269,6 +269,14 @@ input, textarea, select { font-family: inherit; outline: none; }
   from { opacity: 0; transform: translateY(8px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* ── Chat header search ── */
+.chat-search-input { transform-origin: right center; animation: chatSearchIn 0.2s ease-out; }
+.chat-search-input::placeholder { color: rgba(255,255,255,0.75); }
+@keyframes chatSearchIn {
+  from { opacity: 0; transform: scaleX(0.85); }
+  to   { opacity: 1; transform: scaleX(1); }
+}
 .loading-center { display: flex; align-items: center; justify-content: center; min-height: 200px; }
 
 /* ── Empty state ── */
