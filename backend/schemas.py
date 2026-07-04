@@ -87,6 +87,7 @@ class UserOut(BaseModel):
     rival_routes_json: Optional[str] = None
     active_shift_start: Optional[str] = None
     active_direction: Optional[str] = None
+    hints_enabled: Optional[bool] = True
 
     class Config:
         from_attributes = True
@@ -99,6 +100,7 @@ class UserUpdate(BaseModel):
     rival_routes_json: Optional[str] = None
     active_shift_start: Optional[str] = None
     active_direction: Optional[str] = None
+    hints_enabled: Optional[bool] = None
 
 
 # Tracking
@@ -136,6 +138,32 @@ class HintOut(BaseModel):
 
 class NearestStopOut(BaseModel):
     name: Optional[str] = None
+
+
+class ChatConversationOut(BaseModel):
+    key: str
+    type: str  # "route" | "dm"
+    title: str
+    other_user_id: Optional[int] = None
+    unread: int = 0
+    last_message: Optional[str] = None
+    last_message_at: Optional[datetime] = None
+
+
+class ChatMessageOut(BaseModel):
+    id: int
+    conversation_key: str
+    sender_id: int
+    sender_name: str
+    sender_role: str
+    text: str
+    created_at: datetime
+    mine: bool = False
+
+
+class ChatMessageCreate(BaseModel):
+    conversation_key: str
+    text: str
 
 
 class TrackingRequest(BaseModel):

@@ -262,6 +262,13 @@ input, textarea, select { font-family: inherit; outline: none; }
   animation: spin 0.6s linear infinite; margin: 0 auto;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Chat FAB toast ── */
+.chat-fab-toast { animation: chatToastIn 0.25s ease-out; }
+@keyframes chatToastIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 .loading-center { display: flex; align-items: center; justify-content: center; min-height: 200px; }
 
 /* ── Empty state ── */

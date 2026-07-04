@@ -6,7 +6,7 @@ import os
 from sqlalchemy import text
 from .database import engine, SQLALCHEMY_DATABASE_URL
 from . import models
-from .routers import auth, users, tracking, reports, routes, vehicles, repairs, salary, drivers, support
+from .routers import auth, users, tracking, reports, routes, vehicles, repairs, salary, drivers, support, chat
 from .storage import UPLOAD_DIR as _UPLOAD_DIR, USE_SUPABASE as _USE_SUPABASE
 
 models.Base.metadata.create_all(bind=engine)
@@ -33,6 +33,15 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         _add_col(conn, "users",        "active_direction",  "VARCHAR")
         _add_col(conn, "vehicles",     "avatar_url",        "VARCHAR")
         _add_col(conn, "maintenance",  "reminders_json",    "TEXT")
+        _add_col(conn, "users",        "hints_enabled",     "BOOLEAN DEFAULT 1")
+else:
+    # Postgres (Supabase) — same idea, but ALTER TABLE ... ADD COLUMN IF NOT EXISTS
+    # is native syntax here, so no manual PRAGMA check is needed.
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS hints_enabled BOOLEAN DEFAULT TRUE"
+        ))
+        conn.commit()
 
 # Seed demo drivers by ВУ number if they don't exist yet
 def _seed_demo_drivers():
@@ -81,6 +90,7 @@ app.include_router(repairs.router)
 app.include_router(salary.router)
 app.include_router(drivers.router)
 app.include_router(support.router)
+app.include_router(chat.router)
 
 if not _USE_SUPABASE:
     app.mount("/uploads", StaticFiles(directory=_UPLOAD_DIR), name="uploads")

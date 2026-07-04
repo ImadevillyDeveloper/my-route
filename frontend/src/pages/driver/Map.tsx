@@ -66,6 +66,8 @@ export default function DriverMap() {
   const [geoError, setGeoError]     = useState<string | null>(null)
   const [rivals, setRivals]         = useState<any[]>([])
   const [hint, setHint]             = useState<{ type: string; message: string | null; ahead?: any; behind?: any } | null>(null)
+  const [hintsEnabled, setHintsEnabled] = useState(true)
+  const hintsEnabledRef = useRef(true)
   const [mapReady, setMapReady]     = useState(false)
   const [voiceOn, setVoiceOn]       = useState(true)
   const [rivalInfo, setRivalInfo]   = useState<RivalInfo | null>(null)
@@ -128,6 +130,9 @@ export default function DriverMap() {
         const savedRivals: string[] = u.rival_routes_json ? JSON.parse(u.rival_routes_json) : []
         setRivals2(savedRivals)
       } catch {}
+      const hintsOn = u.hints_enabled !== false
+      hintsEnabledRef.current = hintsOn
+      setHintsEnabled(hintsOn)
       setUserLoaded(true)
     }).catch(() => { setUserLoaded(true) })
   }, [])
@@ -321,6 +326,7 @@ export default function DriverMap() {
       setLiveError(false)
 
       // Fetch AI hint — use Navitrans position if tracked, otherwise GPS
+      if (!hintsEnabledRef.current) { setHint(null); return }
       const navPos = navDriverPosRef.current
       const gpsPos = positionRef.current
       const activePos = navPos ?? gpsPos
@@ -790,7 +796,7 @@ export default function DriverMap() {
           </div>
         )}
 
-        {(() => {
+        {hintsEnabled && (() => {
           if (!hint) return (
             <div style={{ background: '#F5F5F5', border: '1.5px solid #E0E0E0', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 18 }}>💡</span>

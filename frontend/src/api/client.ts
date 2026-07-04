@@ -74,6 +74,13 @@ export const getKnownRoutes = () => api.get<string[]>('/tracking/routes')
 export const getNearestStop = (routeNumber: string, lat: number, lng: number) =>
   api.get('/tracking/nearest-stop', { params: { route_number: routeNumber, lat, lng } })
 
+// Chat
+export const getChatConversations = () => api.get('/chat/conversations')
+export const getChatMessages = (conversationKey: string) =>
+  api.get('/chat/messages', { params: { conversation_key: conversationKey } })
+export const postChatMessage = (conversationKey: string, text: string) =>
+  api.post('/chat/messages', { conversation_key: conversationKey, text })
+
 // Reports
 export const scanReceipt = (file: File) => {
   const fd = new FormData();

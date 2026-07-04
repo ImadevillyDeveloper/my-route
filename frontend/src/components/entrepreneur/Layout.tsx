@@ -1,4 +1,11 @@
 import { Outlet, NavLink } from 'react-router-dom'
+import { useUnreadChatCount } from '../chat/useUnreadChatCount'
+
+const CHAT_BADGE = (unread: number) => unread > 0 && (
+  <span style={{ position: 'absolute', top: -3, right: -3, background: '#FF3B30', color: 'white', fontSize: 9, fontWeight: 700, borderRadius: 8, minWidth: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '1.5px solid white' }}>
+    {unread > 9 ? '9+' : unread}
+  </span>
+)
 
 const navItems = [
   {
@@ -13,6 +20,14 @@ const navItems = [
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={a ? 'var(--orange)' : '#AAA'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
         <circle cx="12" cy="7" r="4"/>
+      </svg>
+    )
+  },
+  {
+    to: '/entrepreneur/chat', label: 'Чат',
+    icon: (a: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={a ? 'var(--orange)' : '#AAA'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
       </svg>
     )
   },
@@ -39,6 +54,8 @@ const navItems = [
 ]
 
 export default function EntrepreneurLayout() {
+  const unreadChat = useUnreadChatCount()
+
   return (
     <div className="layout-root">
       <aside className="sidebar-nav">
@@ -54,7 +71,10 @@ export default function EntrepreneurLayout() {
             <NavLink key={to} to={to} className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}>
               {({ isActive }) => (
                 <>
-                  <div className="sidebar-item-icon">{icon(isActive)}</div>
+                  <div className="sidebar-item-icon" style={{ position: 'relative' }}>
+                    {icon(isActive)}
+                    {to === '/entrepreneur/chat' && CHAT_BADGE(unreadChat)}
+                  </div>
                   <span>{label}</span>
                 </>
               )}
@@ -70,7 +90,10 @@ export default function EntrepreneurLayout() {
             <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
               {({ isActive }) => (
                 <>
-                  <div className="nav-item-icon">{icon(isActive)}</div>
+                  <div className="nav-item-icon" style={{ position: 'relative' }}>
+                    {icon(isActive)}
+                    {to === '/entrepreneur/chat' && CHAT_BADGE(unreadChat)}
+                  </div>
                   <span className="nav-item-label">{label}</span>
                 </>
               )}

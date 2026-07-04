@@ -12,6 +12,7 @@ const TOPICS = [
 
 export default function DriverSettings() {
   const [voiceOn, setVoiceOn] = useState(true)
+  const [hintsOn, setHintsOn] = useState(true)
   const [rivals, setRivals] = useState<string[]>([])
   const [userLoaded, setUserLoaded] = useState(false)
   const [inputValue, setInputValue] = useState('')
@@ -39,6 +40,7 @@ export default function DriverSettings() {
         const saved: string[] = r.data.rival_routes_json ? JSON.parse(r.data.rival_routes_json) : []
         setRivals(saved)
       } catch {}
+      setHintsOn(r.data.hints_enabled !== false)
       setUserLoaded(true)
     }).catch(() => { setUserLoaded(true) })
 
@@ -97,6 +99,14 @@ export default function DriverSettings() {
 
   const handleLogout = () => { logout(); navigate('/', { replace: true }) }
 
+  const toggleHints = () => {
+    setHintsOn(prev => {
+      const next = !prev
+      updateMe({ hints_enabled: next }).catch(() => {})
+      return next
+    })
+  }
+
   return (
     <div className="page">
       <div className="app-header">
@@ -105,6 +115,17 @@ export default function DriverSettings() {
       </div>
 
       <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* Мой ЛК */}
+        <div className="card">
+          <div className="row-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/driver/profile')}>
+            <div className="row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <span className="row-label">Мой ЛК</span>
+            <span className="row-arrow" style={{ color: 'var(--orange)', fontSize: 18 }}>›</span>
+          </div>
+        </div>
 
         {/* Rival routes */}
         <div className="card" style={{ padding: '14px 16px' }}>
@@ -165,6 +186,15 @@ export default function DriverSettings() {
             </div>
             <span className="row-label">Голосовой помощник</span>
             <div className={`toggle ${voiceOn ? 'toggle-on' : 'toggle-off'}`} onClick={() => setVoiceOn(v => !v)}>
+              <div className="toggle-thumb" />
+            </div>
+          </div>
+          <div className="row-item">
+            <div className="row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            </div>
+            <span className="row-label">Подсказки на карте</span>
+            <div className={`toggle ${hintsOn ? 'toggle-on' : 'toggle-off'}`} onClick={toggleHints}>
               <div className="toggle-thumb" />
             </div>
           </div>

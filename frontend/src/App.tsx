@@ -12,6 +12,7 @@ import DriverReport       from './pages/driver/Report'
 import DriverReportDetail from './pages/driver/ReportDetail'
 import DriverShifts       from './pages/driver/Shifts'
 import DriverSettings     from './pages/driver/Settings'
+import DriverChat         from './pages/driver/Chat'
 
 // Entrepreneur pages
 import EntMap        from './pages/entrepreneur/Map'
@@ -29,6 +30,7 @@ import EntRouteAdd   from './pages/entrepreneur/RouteAdd'
 import EntReports    from './pages/entrepreneur/Reports'
 import EntReportDetail from './pages/entrepreneur/ReportDetail'
 import EntSettings   from './pages/entrepreneur/Settings'
+import EntChat       from './pages/entrepreneur/Chat'
 
 function ProtectedDriver({ children }: { children: React.ReactNode }) {
   const { token, role } = useAuthStore()
@@ -64,6 +66,7 @@ export default function App() {
           <Route path="report/:id"    element={<DriverReportDetail />} />
           <Route path="shifts"        element={<DriverShifts />} />
           <Route path="settings"      element={<DriverSettings />} />
+          <Route path="chat"          element={<DriverChat />} />
         </Route>
 
         <Route path="/entrepreneur" element={<ProtectedEntrepreneur><EntrepreneurLayout /></ProtectedEntrepreneur>}>
@@ -83,6 +86,7 @@ export default function App() {
           <Route path="reports"         element={<EntReports />} />
           <Route path="reports/:id"     element={<EntReportDetail />} />
           <Route path="settings"        element={<EntSettings />} />
+          <Route path="chat"            element={<EntChat />} />
         </Route>
       </Routes>
     </BrowserRouter>

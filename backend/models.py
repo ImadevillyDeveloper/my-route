@@ -44,6 +44,7 @@ class User(Base):
     rival_routes_json  = Column(Text, nullable=True)    # JSON-массив конкурентных маршрутов
     active_shift_start = Column(String, nullable=True)  # ISO datetime начала активной смены
     active_direction   = Column(String, nullable=True)  # "forward" | "back"
+    hints_enabled      = Column(Boolean, default=True, nullable=True)  # показывать AI-подсказки на карте
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -189,6 +190,31 @@ class CompetitorDirectionMap(Base):
     __table_args__ = (
         UniqueConstraint('our_route_number', 'our_destination', 'competitor_route_number',
                          name='uq_competitor_direction'),
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_key = Column(String, nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    sender_name = Column(String, nullable=False)
+    sender_role = Column(String, nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class ChatRead(Base):
+    __tablename__ = "chat_reads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    conversation_key = Column(String, nullable=False)
+    last_read_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'conversation_key', name='uq_chat_read_user_conversation'),
     )
 
 

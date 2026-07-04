@@ -46,6 +46,8 @@ def update_me(
         current_user.active_shift_start = update.active_shift_start
     if update.active_direction is not None:
         current_user.active_direction = update.active_direction
+    if update.hints_enabled is not None:
+        current_user.hints_enabled = update.hints_enabled
     db.commit()
     db.refresh(current_user)
     return current_user
