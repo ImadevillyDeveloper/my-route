@@ -168,7 +168,6 @@ const SwipeableChatRow = ({ children, rightLabel, leftLabel, onSwipeRight, onSwi
 
   const onPointerDown = (e: React.PointerEvent) => {
     dragRef.current = { startX: e.clientX, startY: e.clientY, dragging: true, moved: false }
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* unsupported, ignore */ }
   }
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current
