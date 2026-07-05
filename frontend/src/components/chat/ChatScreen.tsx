@@ -199,7 +199,7 @@ const SwipeableChatRow = ({ children, rightLabel, leftLabel, onSwipeRight, onSwi
 
   return (
     <div style={{ position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', pointerEvents: 'none' }}>
         <div style={{ flex: 1, background: 'var(--orange)', display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 20, opacity: dx > 10 ? 1 : 0 }}>
           {ICON_PIN_WHITE}<span style={{ color: 'white', fontWeight: 700, fontSize: 13 }}>{rightLabel}</span>
         </div>
