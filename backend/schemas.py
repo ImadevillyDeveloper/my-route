@@ -150,12 +150,15 @@ class ChatConversationOut(BaseModel):
     last_message: Optional[str] = None
     last_message_at: Optional[datetime] = None
     pinned: bool = False
+    online: bool = False
+    last_seen_at: Optional[datetime] = None
 
 
 class ChatConversationStateUpdate(BaseModel):
     conversation_key: str
     pinned: Optional[bool] = None
     hidden: Optional[bool] = None
+    clear: Optional[bool] = None
 
 
 class ChatMessageOut(BaseModel):
@@ -188,11 +191,15 @@ class ChatRouteMemberOut(BaseModel):
     dm_key: str
     is_admin: bool = False
     is_owner: bool = False
+    is_me: bool = False
+    online: bool = False
+    last_seen_at: Optional[datetime] = None
 
 
 class ChatGroupOut(BaseModel):
     conversation_key: str
     avatar_url: Optional[str] = None
+    title: Optional[str] = None
     is_admin: bool = False
     is_owner: bool = False
 
@@ -200,6 +207,11 @@ class ChatGroupOut(BaseModel):
 class ChatGroupAdminUpdate(BaseModel):
     conversation_key: str
     user_id: int
+
+
+class ChatGroupTitleUpdate(BaseModel):
+    conversation_key: str
+    title: str
 
 
 class TrackingRequest(BaseModel):

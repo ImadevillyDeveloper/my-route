@@ -36,6 +36,9 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         _add_col(conn, "users",        "hints_enabled",     "BOOLEAN DEFAULT 1")
         _add_col(conn, "chat_messages", "edited_at",        "DATETIME")
         _add_col(conn, "chat_messages", "deleted_at",       "DATETIME")
+        _add_col(conn, "chat_user_states", "cleared_at",    "DATETIME")
+        _add_col(conn, "chat_groups",      "title",         "VARCHAR")
+        _add_col(conn, "users",            "last_seen_at",  "DATETIME")
 else:
     # Postgres (Supabase) — same idea, but ALTER TABLE ... ADD COLUMN IF NOT EXISTS
     # is native syntax here, so no manual PRAGMA check is needed.
@@ -48,6 +51,15 @@ else:
         ))
         conn.execute(text(
             "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_user_states ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_groups ADD COLUMN IF NOT EXISTS title VARCHAR"
+        ))
+        conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"
         ))
         conn.commit()
 

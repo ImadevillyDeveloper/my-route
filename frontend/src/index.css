@@ -270,6 +270,13 @@ input, textarea, select { font-family: inherit; outline: none; }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ── Chat context menu (conversation ⋮) ── */
+.chat-ctx-menu { transform-origin: top right; animation: chatCtxMenuIn 0.14s ease-out; }
+@keyframes chatCtxMenuIn {
+  from { opacity: 0; transform: scale(0.92) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 /* ── Chat header search ── */
 .chat-search-input { transform-origin: right center; animation: chatSearchIn 0.2s ease-out; }
 .chat-search-input::placeholder { color: rgba(255,255,255,0.75); }

@@ -1,8 +1,31 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, Enum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, Enum, UniqueConstraint, TypeDecorator
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
+from datetime import timezone
 from .database import Base
+
+
+class UTCDateTime(TypeDecorator):
+    """Always round-trips as a tz-aware UTC datetime.
+
+    SQLite silently drops tzinfo on both write and read, so a naive timestamp
+    comes back with no way to know it's UTC — the frontend then misreads it as
+    already being in the device's local time instead of converting it. Postgres
+    keeps tzinfo correctly, but tagging it here too keeps both backends identical.
+    """
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class UserRole(str, enum.Enum):
@@ -46,7 +69,8 @@ class User(Base):
     active_direction   = Column(String, nullable=True)  # "forward" | "back"
     hints_enabled      = Column(Boolean, default=True, nullable=True)  # показывать AI-подсказки на карте
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
+    last_seen_at = Column(UTCDateTime, nullable=True)  # обновляется при каждом запросе (throttled)
 
     reports = relationship("Report", back_populates="driver", foreign_keys="Report.driver_id")
     salaries = relationship("Salary", back_populates="user")
@@ -64,7 +88,7 @@ class Route(Base):
     document_number = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
     vehicles = relationship("Vehicle", back_populates="route")
 
@@ -82,7 +106,7 @@ class Vehicle(Base):
     lng = Column(Float, nullable=True)
     speed = Column(Float, default=0.0)
     driver_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
     owner_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
     avatar_url = Column(String, nullable=True)
@@ -110,8 +134,8 @@ class Report(Base):
     receipt_image_url = Column(String, nullable=True)
     status = Column(Enum(ReportStatus), default=ReportStatus.pending)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(UTCDateTime, server_default=func.now())
+    reviewed_at = Column(UTCDateTime, nullable=True)
 
     driver = relationship("User", back_populates="reports", foreign_keys=[driver_id])
 
@@ -126,7 +150,7 @@ class Repair(Base):
     description = Column(Text, nullable=True)
     cost = Column(Float, default=0.0)
     workshop = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
     vehicle = relationship("Vehicle", back_populates="repairs")
 
@@ -174,7 +198,7 @@ class RouteStopList(Base):
     mr_id = Column(String, primary_key=True)
     route_number = Column(String, nullable=False, index=True)
     stops_json = Column(Text, nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
 
 class CompetitorDirectionMap(Base):
@@ -202,9 +226,9 @@ class ChatMessage(Base):
     sender_name = Column(String, nullable=False)
     sender_role = Column(String, nullable=False)
     text = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    edited_at = Column(DateTime(timezone=True), nullable=True)
-    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(UTCDateTime, server_default=func.now(), index=True)
+    edited_at = Column(UTCDateTime, nullable=True)
+    deleted_at = Column(UTCDateTime, nullable=True)
 
 
 class ChatRead(Base):
@@ -213,7 +237,7 @@ class ChatRead(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     conversation_key = Column(String, nullable=False)
-    last_read_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_read_at = Column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         UniqueConstraint('user_id', 'conversation_key', name='uq_chat_read_user_conversation'),
@@ -227,7 +251,8 @@ class ChatUserState(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     conversation_key = Column(String, nullable=False)
     pinned = Column(Boolean, nullable=True)  # None = use the type's default pin state
-    hidden_at = Column(DateTime(timezone=True), nullable=True)  # set when the user "deletes" the chat
+    hidden_at = Column(UTCDateTime, nullable=True)  # set when the user "deletes" the chat
+    cleared_at = Column(UTCDateTime, nullable=True)  # messages at/before this are hidden for the user only
 
     __table_args__ = (
         UniqueConstraint('user_id', 'conversation_key', name='uq_chat_user_state_user_conversation'),
@@ -239,6 +264,20 @@ class ChatGroup(Base):
 
     conversation_key = Column(String, primary_key=True)
     avatar_url = Column(String, nullable=True)
+    title = Column(String, nullable=True)  # custom display name; falls back to "Маршрут №N" when unset
+
+
+class ChatMessageHidden(Base):
+    """A message a specific user chose to 'delete for me' — stays visible to everyone else."""
+    __tablename__ = "chat_message_hidden"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'message_id', name='uq_chat_message_hidden_user_message'),
+    )
 
 
 class ChatGroupAdmin(Base):
@@ -250,6 +289,19 @@ class ChatGroupAdmin(Base):
 
     __table_args__ = (
         UniqueConstraint('conversation_key', 'user_id', name='uq_chat_group_admin'),
+    )
+
+
+class ChatGroupRemoved(Base):
+    """A driver kicked from a route's group chat by the owner or an admin."""
+    __tablename__ = "chat_group_removed"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_key = Column(String, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('conversation_key', 'user_id', name='uq_chat_group_removed'),
     )
 
 

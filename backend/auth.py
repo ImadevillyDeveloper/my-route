@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -15,6 +15,18 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
+
+PRESENCE_UPDATE_INTERVAL = timedelta(seconds=20)  # throttle last_seen_at writes
+
+
+def _touch_last_seen(user: models.User, db: Session) -> None:
+    now = datetime.now(timezone.utc)
+    last_seen = user.last_seen_at
+    if last_seen is not None and last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+    if last_seen is None or (now - last_seen) > PRESENCE_UPDATE_INTERVAL:
+        user.last_seen_at = now
+        db.commit()
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -46,6 +58,7 @@ def get_current_user(
     user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None:
         raise credentials_exception
+    _touch_last_seen(user, db)
     return user
 
 
