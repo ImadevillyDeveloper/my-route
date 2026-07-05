@@ -153,6 +153,7 @@ const ICON_TRASH_WHITE = (
 
 const SWIPE_MAX = 88
 const SWIPE_THRESHOLD = 60
+const CLICK_SUPPRESS_THRESHOLD = 15  // ignore incidental jitter from a real mouse/trackpad click
 
 const SwipeableChatRow = ({ children, rightLabel, leftLabel, onSwipeRight, onSwipeLeft }: {
   children: React.ReactNode
@@ -182,7 +183,7 @@ const SwipeableChatRow = ({ children, rightLabel, leftLabel, onSwipeRight, onSwi
   const endDrag = () => {
     const d = dragRef.current
     if (d?.moved) {
-      suppressClickRef.current = true
+      if (Math.abs(dx) > CLICK_SUPPRESS_THRESHOLD) suppressClickRef.current = true
       if (dx > SWIPE_THRESHOLD) onSwipeRight()
       else if (dx < -SWIPE_THRESHOLD) onSwipeLeft()
     }
