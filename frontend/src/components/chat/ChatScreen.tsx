@@ -443,6 +443,8 @@ export default function ChatScreen() {
   const [recording, setRecording] = useState<{ kind: 'voice' | 'video_note' } | null>(null)
   const [recordSeconds, setRecordSeconds] = useState(0)
   const [videoPreviewStream, setVideoPreviewStream] = useState<MediaStream | null>(null)
+  const [videoFacing, setVideoFacing] = useState<'user' | 'environment'>('user')
+  const [flippingCamera, setFlippingCamera] = useState(false)
   const videoPreviewRef = useRef<HTMLVideoElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
@@ -798,6 +800,7 @@ export default function ChatScreen() {
   const startRecording = async (kind: 'voice' | 'video_note') => {
     if (recording) return
     try {
+      setVideoFacing('user')
       const stream = await navigator.mediaDevices.getUserMedia(
         kind === 'voice'
           ? { audio: true }
@@ -819,6 +822,36 @@ export default function ChatScreen() {
       }, 250)
     } catch {
       setRecording(null)
+    }
+  }
+
+  const flipCamera = async () => {
+    if (!recording || recording.kind !== 'video_note' || flippingCamera) return
+    const stream = recordStreamRef.current
+    if (!stream) return
+    const nextFacing = videoFacing === 'user' ? 'environment' : 'user'
+    setFlippingCamera(true)
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 320 }, height: { ideal: 320 }, facingMode: nextFacing },
+      })
+      const newTrack = newStream.getVideoTracks()[0]
+      if (!newTrack) return
+      const oldTrack = stream.getVideoTracks()[0]
+      stream.addTrack(newTrack)
+      if (oldTrack) {
+        stream.removeTrack(oldTrack)
+        oldTrack.stop()
+      }
+      setVideoFacing(nextFacing)
+      if (videoPreviewRef.current) {
+        videoPreviewRef.current.srcObject = null
+        videoPreviewRef.current.srcObject = stream
+      }
+    } catch {
+      // camera unavailable (e.g. device has no second camera) — keep current one
+    } finally {
+      setFlippingCamera(false)
     }
   }
 
@@ -1203,8 +1236,24 @@ export default function ChatScreen() {
               </button>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 {recording.kind === 'video_note' && (
-                  <video ref={videoPreviewRef} autoPlay muted playsInline
-                    style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', transform: 'scaleX(-1)', flexShrink: 0 }} />
+                  <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
+                    <video ref={videoPreviewRef} autoPlay muted playsInline
+                      style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', transform: videoFacing === 'user' ? 'scaleX(-1)' : 'none' }} />
+                    {flippingCamera && (
+                      <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <PendingSpinner size={16} color="white" />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {recording.kind === 'video_note' && (
+                  <button onClick={flipCamera} disabled={flippingCamera}
+                    style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+                    </svg>
+                  </button>
                 )}
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF3B30', flexShrink: 0, animation: 'chat-rec-blink 1s infinite' }} />
                 <span style={{ fontSize: 14, color: '#666', fontVariantNumeric: 'tabular-nums' }}>
