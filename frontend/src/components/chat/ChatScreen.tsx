@@ -481,17 +481,21 @@ export default function ChatScreen() {
       })
   }, [routeKeys])
 
-  const loadMessages = (key: string) => {
+  const loadMessages = (key: string, opts?: { forceScroll?: boolean }) => {
+    const el = listRef.current
+    const wasNearBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120
     getChatMessages(key).then(r => {
       if (activeKeyRef.current !== key) return
       setMessages(prev => [...r.data, ...prev.filter(m => m.pending || m.failed)])
-      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
+      if (opts?.forceScroll || wasNearBottom) {
+        setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
+      }
     }).catch(() => {})
   }
 
   useEffect(() => {
     if (!active) return
-    loadMessages(active.key)
+    loadMessages(active.key, { forceScroll: true })
     const t = setInterval(() => loadMessages(active.key), 5000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -639,7 +643,7 @@ export default function ChatScreen() {
     askConfirm(<>Очистить историю сообщений в чате «{nameHighlight(c.title)}»? Это затронет только ваш экран.</>, 'Очистить', false, () => {
       clearChatConversation(c.key).then(() => {
         loadConversations()
-        if (activeKeyRef.current === c.key) loadMessages(c.key)
+        if (activeKeyRef.current === c.key) loadMessages(c.key, { forceScroll: true })
       }).catch(() => {})
       setConversations(prev => prev.map(x => x.key === c.key ? { ...x, last_message: undefined, last_message_at: undefined, unread: 0 } : x))
     })
