@@ -1,7 +1,8 @@
+import io
 import os
 import random
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
@@ -12,6 +13,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 DELETED_PLACEHOLDER = "Сообщение удалено"
 ONLINE_THRESHOLD = timedelta(seconds=45)
+MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024  # 20 MB
+ATTACHMENT_KINDS = {"image", "file", "voice", "video_note"}
 
 
 def _presence(user: models.User) -> tuple[bool, "datetime | None"]:
@@ -148,6 +151,15 @@ def _all_read_at(key: str, sender_id: int, db: Session) -> "datetime | None":
     return min(r.last_read_at for r in reads)
 
 
+def _attachment_preview(attachment_type: "str | None") -> str:
+    return {
+        "image": "📷 Фото",
+        "file": "📎 Файл",
+        "voice": "🎤 Голосовое сообщение",
+        "video_note": "📹 Видеосообщение",
+    }.get(attachment_type or "", "")
+
+
 def _unread_count(user_id: int, key: str, db: Session) -> int:
     read_row = db.query(models.ChatRead).filter_by(user_id=user_id, conversation_key=key).first()
     q = db.query(models.ChatMessage).filter(
@@ -255,7 +267,7 @@ def list_conversations(
             last_q = last_q.filter(models.ChatMessage.created_at > state.cleared_at)
         last = last_q.order_by(models.ChatMessage.created_at.desc()).first()
         if last:
-            c["last_message"] = DELETED_PLACEHOLDER if last.deleted_at else last.text
+            c["last_message"] = DELETED_PLACEHOLDER if last.deleted_at else (last.text or _attachment_preview(last.attachment_type))
             c["last_message_at"] = last.created_at
 
         # "Deleted" chats stay hidden until a new message arrives after the delete.
@@ -547,6 +559,11 @@ def _message_out(
         edited=m.edited_at is not None,
         deleted=deleted,
         read=bool(mine and all_read_at and m.created_at <= all_read_at),
+        attachment_url=None if deleted else m.attachment_url,
+        attachment_type=None if deleted else m.attachment_type,
+        attachment_name=None if deleted else m.attachment_name,
+        attachment_size=None if deleted else m.attachment_size,
+        attachment_duration=None if deleted else m.attachment_duration,
     )
 
 
@@ -609,6 +626,57 @@ def post_message(
     db.commit()
     db.refresh(msg)
     _mark_read(current_user.id, body.conversation_key, db)
+
+    return _message_out(msg, current_user, current_user.avatar_url)
+
+
+@router.post("/messages/upload", response_model=schemas.ChatMessageOut, status_code=201)
+async def upload_chat_attachment(
+    conversation_key: str = Form(...),
+    kind: str = Form(...),
+    caption: str = Form(""),
+    duration: int | None = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if kind not in ATTACHMENT_KINDS:
+        raise HTTPException(400, "Неверный тип вложения")
+    if not _can_access(conversation_key, current_user, db):
+        raise HTTPException(403, "Нет доступа к этому чату")
+
+    caption = caption.strip()
+    if len(caption) > 2000:
+        raise HTTPException(400, "Слишком длинная подпись")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Пустой файл")
+    if len(data) > MAX_ATTACHMENT_SIZE:
+        raise HTTPException(400, "Файл слишком большой (макс. 20 МБ)")
+
+    ext = os.path.splitext(file.filename or "")[1]
+    if not ext:
+        ext = {"image": ".jpg", "voice": ".webm", "video_note": ".webm"}.get(kind, "")
+    filename = f"chat_{current_user.id}_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}{ext}"
+    attachment_url = save_upload(io.BytesIO(data), filename, file.content_type or "application/octet-stream")
+
+    msg = models.ChatMessage(
+        conversation_key=conversation_key,
+        sender_id=current_user.id,
+        sender_name=current_user.full_name,
+        sender_role=current_user.role,
+        text=caption,
+        attachment_url=attachment_url,
+        attachment_type=kind,
+        attachment_name=file.filename if kind == "file" else None,
+        attachment_size=len(data) if kind == "file" else None,
+        attachment_duration=duration if kind in ("voice", "video_note") else None,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    _mark_read(current_user.id, conversation_key, db)
 
     return _message_out(msg, current_user, current_user.avatar_url)
 

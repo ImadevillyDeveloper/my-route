@@ -105,6 +105,20 @@ export const removeChatGroupAdmin = (conversationKey: string, userId: number) =>
   api.delete(`/chat/group/admins/${userId}`, { params: { conversation_key: conversationKey } })
 export const removeChatGroupMember = (conversationKey: string, userId: number) =>
   api.delete(`/chat/group/members/${userId}`, { params: { conversation_key: conversationKey } })
+export const uploadChatAttachment = (
+  conversationKey: string,
+  file: File | Blob,
+  kind: 'image' | 'file' | 'voice' | 'video_note',
+  opts?: { caption?: string; duration?: number; filename?: string }
+) => {
+  const fd = new FormData()
+  fd.append('conversation_key', conversationKey)
+  fd.append('kind', kind)
+  fd.append('caption', opts?.caption ?? '')
+  if (opts?.duration != null) fd.append('duration', String(Math.round(opts.duration)))
+  fd.append('file', file, opts?.filename ?? (file instanceof File ? file.name : 'attachment'))
+  return api.post('/chat/messages/upload', fd, { timeout: 60000 })
+}
 
 // Reports
 export const scanReceipt = (file: File) => {

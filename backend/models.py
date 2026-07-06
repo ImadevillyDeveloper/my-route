@@ -229,6 +229,11 @@ class ChatMessage(Base):
     created_at = Column(UTCDateTime, server_default=func.now(), index=True)
     edited_at = Column(UTCDateTime, nullable=True)
     deleted_at = Column(UTCDateTime, nullable=True)
+    attachment_url = Column(String, nullable=True)
+    attachment_type = Column(String, nullable=True)  # "image" | "file" | "voice" | "video_note"
+    attachment_name = Column(String, nullable=True)   # original filename, for "file"
+    attachment_size = Column(Integer, nullable=True)  # bytes, for "file"
+    attachment_duration = Column(Integer, nullable=True)  # seconds, for "voice" / "video_note"
 
 
 class ChatRead(Base):

@@ -174,6 +174,11 @@ class ChatMessageOut(BaseModel):
     edited: bool = False
     deleted: bool = False
     read: bool = False
+    attachment_url: Optional[str] = None
+    attachment_type: Optional[str] = None
+    attachment_name: Optional[str] = None
+    attachment_size: Optional[int] = None
+    attachment_duration: Optional[int] = None
 
 
 class ChatMessageCreate(BaseModel):

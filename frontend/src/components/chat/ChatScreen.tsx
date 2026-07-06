@@ -3,6 +3,7 @@ import {
   getChatConversations, getChatMessages, postChatMessage, getChatRouteMembers, setChatConversationState,
   resolveAssetUrl, editChatMessage, deleteChatMessage, getChatGroup, uploadChatGroupAvatar,
   addChatGroupAdmin, removeChatGroupAdmin, clearChatConversation, updateChatGroupTitle, removeChatGroupMember,
+  uploadChatAttachment,
 } from '../../api/client'
 import LogoLoader from '../common/LogoLoader'
 
@@ -53,6 +54,11 @@ interface ChatMessage {
   edited: boolean
   deleted: boolean
   read: boolean
+  attachment_url?: string | null
+  attachment_type?: 'image' | 'file' | 'voice' | 'video_note' | null
+  attachment_name?: string | null
+  attachment_size?: number | null
+  attachment_duration?: number | null
 }
 
 const ICON_ROUTE = (
@@ -118,6 +124,21 @@ const dayLabel = (iso: string) => {
 
 const messageTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+
+const formatDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+const formatBytes = (n: number) => {
+  if (n < 1024) return `${n} Б`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`
+  return `${(n / (1024 * 1024)).toFixed(1)} МБ`
+}
+
+const iconFile = (color: string) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+)
+const iconDownload = (color: string) => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+)
 
 // Neutral phrasing ("в сети"/relative time) since we don't track user gender for "был/была".
 const lastSeenLabel = (iso: string) => {
@@ -256,6 +277,19 @@ export default function ChatScreen() {
   const activeKeyRef = useRef<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const groupAvatarInputRef = useRef<HTMLInputElement>(null)
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [recording, setRecording] = useState<{ kind: 'voice' | 'video_note' } | null>(null)
+  const [recordSeconds, setRecordSeconds] = useState(0)
+  const [videoPreviewStream, setVideoPreviewStream] = useState<MediaStream | null>(null)
+  const videoPreviewRef = useRef<HTMLVideoElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordedChunksRef = useRef<Blob[]>([])
+  const recordStreamRef = useRef<MediaStream | null>(null)
+  const recordStartRef = useRef(0)
+  const recordTimerRef = useRef<number | null>(null)
 
   const loadConversations = () => {
     getChatConversations().then(r => { setConversations(r.data); setLoadedList(true) }).catch(() => setLoadedList(true))
@@ -295,6 +329,23 @@ export default function ChatScreen() {
     loadMessages(active.key)
     const t = setInterval(() => loadMessages(active.key), 5000)
     return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.key])
+
+  useEffect(() => {
+    if (videoPreviewRef.current) videoPreviewRef.current.srcObject = videoPreviewStream
+  }, [videoPreviewStream])
+
+  // Stop any in-progress recording when leaving the thread or unmounting.
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.onstop = null
+        mediaRecorderRef.current.stop()
+      }
+      recordStreamRef.current?.getTracks().forEach(t => t.stop())
+      if (recordTimerRef.current != null) clearInterval(recordTimerRef.current)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.key])
 
@@ -459,6 +510,103 @@ export default function ChatScreen() {
     } finally {
       setSending(false)
     }
+  }
+
+  const sendAttachment = async (
+    file: File | Blob,
+    kind: 'image' | 'file' | 'voice' | 'video_note',
+    opts?: { caption?: string; duration?: number; filename?: string }
+  ) => {
+    if (!active) return
+    setUploading(true)
+    try {
+      const res = await uploadChatAttachment(active.key, file, kind, opts)
+      setMessages(prev => [...prev, res.data])
+      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
+      loadConversations()
+    } catch {
+      // upload failed silently — user can retry
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const onImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    setAttachMenuOpen(false)
+    if (!file) return
+    const caption = text.trim()
+    setText('')
+    sendAttachment(file, 'image', { caption })
+  }
+
+  const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    setAttachMenuOpen(false)
+    if (!file) return
+    const caption = text.trim()
+    setText('')
+    sendAttachment(file, 'file', { caption, filename: file.name })
+  }
+
+  const pickRecorderMime = (kind: 'voice' | 'video_note') => {
+    const candidates = kind === 'voice'
+      ? ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+      : ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+    return candidates.find(c => (window as any).MediaRecorder?.isTypeSupported?.(c)) || ''
+  }
+
+  const startRecording = async (kind: 'voice' | 'video_note') => {
+    if (recording || uploading) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(
+        kind === 'voice'
+          ? { audio: true }
+          : { audio: true, video: { width: { ideal: 320 }, height: { ideal: 320 }, facingMode: 'user' } }
+      )
+      recordStreamRef.current = stream
+      if (kind === 'video_note') setVideoPreviewStream(stream)
+      const mimeType = pickRecorderMime(kind)
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      recordedChunksRef.current = []
+      recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
+      recorder.start()
+      mediaRecorderRef.current = recorder
+      recordStartRef.current = Date.now()
+      setRecordSeconds(0)
+      setRecording({ kind })
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds(Math.round((Date.now() - recordStartRef.current) / 1000))
+      }, 250)
+    } catch {
+      setRecording(null)
+    }
+  }
+
+  const stopRecording = (send: boolean) => {
+    const recorder = mediaRecorderRef.current
+    const kind = recording?.kind
+    const duration = Math.round((Date.now() - recordStartRef.current) / 1000)
+    if (recordTimerRef.current != null) { clearInterval(recordTimerRef.current); recordTimerRef.current = null }
+    recordStreamRef.current?.getTracks().forEach(t => t.stop())
+    recordStreamRef.current = null
+    setVideoPreviewStream(null)
+    setRecording(null)
+    setRecordSeconds(0)
+    if (!recorder || !kind) return
+    if (!send) {
+      recorder.onstop = null
+      recorder.stop()
+      return
+    }
+    recorder.onstop = () => {
+      const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || (kind === 'voice' ? 'audio/webm' : 'video/webm') })
+      recordedChunksRef.current = []
+      if (blob.size > 0) sendAttachment(blob, kind, { duration })
+    }
+    recorder.stop()
   }
 
   const startEdit = (m: ChatMessage) => {
@@ -681,24 +829,91 @@ export default function ChatScreen() {
                         {m.sender_name}{m.sender_role === 'entrepreneur' ? ' · ИП' : ''}
                       </span>
                     )}
-                    <div
-                      onClick={e => {
-                        if (m.deleted) return
-                        const r = e.currentTarget.getBoundingClientRect()
-                        setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
-                        setMsgMenu(m)
-                      }}
-                      style={{
-                        padding: '9px 13px', borderRadius: 16,
-                        background: m.deleted ? (m.mine ? 'rgba(255,255,255,0.25)' : '#EFEFEF') : (m.mine ? 'var(--orange)' : 'white'),
-                        color: m.deleted ? (m.mine ? 'rgba(255,255,255,0.8)' : '#999') : (m.mine ? 'white' : 'var(--text-primary)'),
-                        boxShadow: (m.mine || m.deleted) ? 'none' : '0 1px 3px rgba(0,0,0,0.08)',
-                        fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word',
-                        fontStyle: m.deleted ? 'italic' : 'normal',
-                        cursor: m.deleted ? 'default' : 'pointer',
-                      }}>
-                      {m.deleted ? 'Сообщение удалено' : m.text}
-                    </div>
+                    {!m.deleted && m.attachment_type === 'video_note' ? (
+                      <div
+                        onClick={e => {
+                          const r = e.currentTarget.getBoundingClientRect()
+                          setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
+                          setMsgMenu(m)
+                        }}
+                        style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: m.mine ? 'flex-end' : 'flex-start' }}>
+                        <video src={resolveAssetUrl(m.attachment_url!)} controls playsInline
+                          onClick={e => e.stopPropagation()}
+                          style={{ width: 200, height: 200, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000' }} />
+                        {m.text && (
+                          <div style={{
+                            marginTop: 6, padding: '9px 13px', borderRadius: 16, fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word',
+                            background: m.mine ? 'var(--orange)' : 'white', color: m.mine ? 'white' : 'var(--text-primary)',
+                            boxShadow: m.mine ? 'none' : '0 1px 3px rgba(0,0,0,0.08)',
+                          }}>
+                            {m.text}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        onClick={e => {
+                          if (m.deleted) return
+                          const r = e.currentTarget.getBoundingClientRect()
+                          setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
+                          setMsgMenu(m)
+                        }}
+                        style={{
+                          padding: m.attachment_type === 'image' && !m.deleted ? 4 : '9px 13px', borderRadius: 16,
+                          background: m.deleted ? (m.mine ? 'rgba(255,255,255,0.25)' : '#EFEFEF') : (m.mine ? 'var(--orange)' : 'white'),
+                          color: m.deleted ? (m.mine ? 'rgba(255,255,255,0.8)' : '#999') : (m.mine ? 'white' : 'var(--text-primary)'),
+                          boxShadow: (m.mine || m.deleted) ? 'none' : '0 1px 3px rgba(0,0,0,0.08)',
+                          fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word',
+                          fontStyle: m.deleted ? 'italic' : 'normal',
+                          cursor: m.deleted ? 'default' : 'pointer',
+                        }}>
+                        {m.deleted ? 'Сообщение удалено' : (
+                          <>
+                            {m.attachment_type === 'image' && (
+                              <img src={resolveAssetUrl(m.attachment_url!)}
+                                style={{ display: 'block', maxWidth: 220, maxHeight: 280, borderRadius: 12, marginBottom: m.text ? 6 : 0 }} />
+                            )}
+                            {m.attachment_type === 'file' && (
+                              <div onClick={e => e.stopPropagation()}
+                                style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'default', marginBottom: m.text ? 8 : 0, minWidth: 160 }}>
+                                <div style={{
+                                  width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                                  background: m.mine ? 'rgba(255,255,255,0.2)' : '#FFF3EE',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                  {iconFile(m.mine ? 'white' : 'var(--orange)')}
+                                </div>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {m.attachment_name || 'Файл'}
+                                  </div>
+                                  {m.attachment_size != null && (
+                                    <div style={{ fontSize: 11, opacity: 0.75 }}>{formatBytes(m.attachment_size)}</div>
+                                  )}
+                                </div>
+                                <a href={resolveAssetUrl(m.attachment_url!)} target="_blank" rel="noreferrer" download={m.attachment_name || true}
+                                  onClick={e => e.stopPropagation()} style={{ flexShrink: 0, display: 'flex' }}>
+                                  {iconDownload(m.mine ? 'white' : '#999')}
+                                </a>
+                              </div>
+                            )}
+                            {m.attachment_type === 'voice' && (
+                              <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: m.text ? 6 : 0 }}>
+                                <audio controls src={resolveAssetUrl(m.attachment_url!)} style={{ height: 36, maxWidth: 220 }} />
+                                {m.attachment_duration != null && (
+                                  <span style={{ fontSize: 11, opacity: 0.75, flexShrink: 0 }}>{formatDuration(m.attachment_duration)}</span>
+                                )}
+                              </div>
+                            )}
+                            {m.text && (
+                              m.attachment_type === 'image'
+                                ? <div style={{ padding: '0 5px 3px' }}>{m.text}</div>
+                                : m.text
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                     <span style={{ fontSize: 10, color: '#AAA', marginTop: 2, marginRight: m.mine ? 4 : 0, marginLeft: m.mine ? 0 : 4, display: 'flex', alignItems: 'center', gap: 3 }}>
                       {messageTime(m.created_at)}{m.edited && !m.deleted ? ' · изменено' : ''}
                       {m.mine && !m.deleted && <ReadTicks read={m.read} />}
@@ -719,23 +934,86 @@ export default function ChatScreen() {
               <button onClick={cancelEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#999', fontSize: 18, lineHeight: 1 }}>✕</button>
             </div>
           )}
-          <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <textarea
-              value={text}
-              onChange={e => setText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } if (e.key === 'Escape' && editingId != null) cancelEdit() }}
-              placeholder="Сообщение..."
-              rows={1}
-              style={{ flex: 1, resize: 'none', border: '1.5px solid var(--border)', borderRadius: 20, padding: '10px 16px', fontSize: 14, fontFamily: 'inherit', maxHeight: 100 }}
-            />
-            <button onClick={send} disabled={!text.trim() || sending}
-              style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: text.trim() ? 'var(--orange)' : '#E0E0E0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: text.trim() ? 'pointer' : 'default', flexShrink: 0 }}>
-              {editingId != null
-                ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                : <svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
-              }
-            </button>
-          </div>
+          <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImageSelected} />
+          <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={onFileSelected} />
+
+          {recording ? (
+            <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button onClick={() => stopRecording(false)}
+                style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                {recording.kind === 'video_note' && (
+                  <video ref={videoPreviewRef} autoPlay muted playsInline
+                    style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', transform: 'scaleX(-1)', flexShrink: 0 }} />
+                )}
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF3B30', flexShrink: 0, animation: 'chat-rec-blink 1s infinite' }} />
+                <span style={{ fontSize: 14, color: '#666', fontVariantNumeric: 'tabular-nums' }}>
+                  {String(Math.floor(recordSeconds / 60)).padStart(1, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
+                </span>
+                <span style={{ fontSize: 13, color: '#AAA' }}>{recording.kind === 'voice' ? 'Голосовое' : 'Видеосообщение'}</span>
+              </div>
+              <button onClick={() => stopRecording(true)}
+                style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 8, alignItems: 'flex-end', position: 'relative' }}>
+              {editingId == null && (
+                <button onClick={() => setAttachMenuOpen(v => !v)} disabled={uploading}
+                  style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#999' }}>
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+              )}
+              {attachMenuOpen && (
+                <div onClick={() => setAttachMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999 }}>
+                  <div onClick={e => e.stopPropagation()} className="chat-ctx-menu"
+                    style={{ position: 'fixed', bottom: 'calc(60px + var(--nav-safe))', left: 8, width: 180, background: 'white', borderRadius: 12, boxShadow: '0 6px 28px rgba(0,0,0,0.2)', border: '1px solid #EEE', overflow: 'hidden' }}>
+                    <div onClick={() => imageInputRef.current?.click()}
+                      style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: '1px solid #F5F5F5' }}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>Фото</span>
+                    </div>
+                    <div onClick={() => fileInputRef.current?.click()}
+                      style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>Файл</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <textarea
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } if (e.key === 'Escape' && editingId != null) cancelEdit() }}
+                placeholder="Сообщение..."
+                rows={1}
+                style={{ flex: 1, resize: 'none', border: '1.5px solid var(--border)', borderRadius: 20, padding: '10px 16px', fontSize: 14, fontFamily: 'inherit', maxHeight: 100 }}
+              />
+              {text.trim() || editingId != null ? (
+                <button onClick={send} disabled={!text.trim() || sending}
+                  style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: text.trim() ? 'var(--orange)' : '#E0E0E0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: text.trim() ? 'pointer' : 'default', flexShrink: 0 }}>
+                  {editingId != null
+                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+                  }
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => startRecording('video_note')} disabled={uploading}
+                    style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                  </button>
+                  <button onClick={() => startRecording('voice')} disabled={uploading}
+                    style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {msgMenu && (

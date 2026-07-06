@@ -277,6 +277,12 @@ input, textarea, select { font-family: inherit; outline: none; }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* ── Chat recording indicator ── */
+@keyframes chat-rec-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+
 /* ── Chat header search ── */
 .chat-search-input { transform-origin: right center; animation: chatSearchIn 0.2s ease-out; }
 .chat-search-input::placeholder { color: rgba(255,255,255,0.75); }

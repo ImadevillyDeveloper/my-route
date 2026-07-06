@@ -39,6 +39,11 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         _add_col(conn, "chat_user_states", "cleared_at",    "DATETIME")
         _add_col(conn, "chat_groups",      "title",         "VARCHAR")
         _add_col(conn, "users",            "last_seen_at",  "DATETIME")
+        _add_col(conn, "chat_messages", "attachment_url",      "VARCHAR")
+        _add_col(conn, "chat_messages", "attachment_type",     "VARCHAR")
+        _add_col(conn, "chat_messages", "attachment_name",     "VARCHAR")
+        _add_col(conn, "chat_messages", "attachment_size",     "INTEGER")
+        _add_col(conn, "chat_messages", "attachment_duration", "INTEGER")
 else:
     # Postgres (Supabase) — same idea, but ALTER TABLE ... ADD COLUMN IF NOT EXISTS
     # is native syntax here, so no manual PRAGMA check is needed.
@@ -60,6 +65,21 @@ else:
         ))
         conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_url VARCHAR"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_type VARCHAR"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_size INTEGER"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_duration INTEGER"
         ))
         conn.commit()
 
