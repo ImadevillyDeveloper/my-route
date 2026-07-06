@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   getChatConversations, getChatMessages, postChatMessage, getChatRouteMembers, setChatConversationState,
@@ -450,6 +450,14 @@ export default function ChatScreen() {
   const [recordingPaused, setRecordingPaused] = useState(false)
   const [recordingMinimized, setRecordingMinimized] = useState(false)
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null)
+  // Stable ref callback: an inline arrow function would get a new identity every
+  // render (the recording timer re-renders every 250ms), making React detach and
+  // reattach the ref — and reassign srcObject — constantly, which flashes the preview.
+  const setVideoPreviewEl = useCallback((el: HTMLVideoElement | null) => {
+    videoPreviewRef.current = el
+    if (el && el.srcObject !== videoPreviewStream) el.srcObject = videoPreviewStream
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoPreviewStream])
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordStreamRef = useRef<MediaStream | null>(null)
@@ -508,10 +516,6 @@ export default function ChatScreen() {
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.key])
-
-  useEffect(() => {
-    if (videoPreviewRef.current) videoPreviewRef.current.srcObject = videoPreviewStream
-  }, [videoPreviewStream])
 
   // Stop any in-progress recording when leaving the thread or unmounting.
   useEffect(() => {
@@ -860,29 +864,43 @@ export default function ChatScreen() {
 
   const flipCamera = async () => {
     if (!recording || recording.kind !== 'video_note' || flippingCamera) return
-    const stream = recordStreamRef.current
-    if (!stream) return
+    const recorder = mediaRecorderRef.current
+    const oldStream = recordStreamRef.current
+    if (!recorder || !oldStream) return
     const nextFacing = videoFacing === 'user' ? 'environment' : 'user'
     setFlippingCamera(true)
+    const wasPaused = recorder.state === 'paused'
     try {
+      // Swapping the video track live on a MediaStream mid-recording is not
+      // reliably supported — it silently breaks pause/resume and stop() on
+      // some browsers. Instead, cleanly end this segment (flushing its data
+      // into recordedChunksRef) and start a fresh recorder on the new camera,
+      // appending to the same chunk list so the final blob has both segments.
       const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
         video: { width: { ideal: 320 }, height: { ideal: 320 }, facingMode: nextFacing },
       })
-      const newTrack = newStream.getVideoTracks()[0]
-      if (!newTrack) return
-      const oldTrack = stream.getVideoTracks()[0]
-      stream.addTrack(newTrack)
-      if (oldTrack) {
-        stream.removeTrack(oldTrack)
-        oldTrack.stop()
-      }
+
+      await new Promise<void>(resolve => {
+        if (recorder.state === 'inactive') { resolve(); return }
+        recorder.onstop = () => resolve()
+        recorder.stop()
+      })
+      recorder.onstop = null
+      oldStream.getTracks().forEach(t => t.stop())
+
+      const mimeType = pickRecorderMime('video_note')
+      const newRecorder = mimeType ? new MediaRecorder(newStream, { mimeType }) : new MediaRecorder(newStream)
+      newRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
+      newRecorder.start()
+      if (wasPaused) newRecorder.pause()
+
+      mediaRecorderRef.current = newRecorder
+      recordStreamRef.current = newStream
+      setVideoPreviewStream(newStream)
       setVideoFacing(nextFacing)
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = null
-        videoPreviewRef.current.srcObject = stream
-      }
     } catch {
-      // camera unavailable (e.g. device has no second camera) — keep current one
+      // camera unavailable (e.g. device has no second camera) — keep recording as-is
     } finally {
       setFlippingCamera(false)
     }
@@ -1384,7 +1402,7 @@ export default function ChatScreen() {
             </button>
 
             <div style={{ position: 'relative', width: 260, height: 260 }}>
-              <video ref={el => { videoPreviewRef.current = el; if (el) el.srcObject = videoPreviewStream }} autoPlay muted playsInline
+              <video ref={setVideoPreviewEl} autoPlay muted playsInline
                 style={{ width: 260, height: 260, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000', transform: videoFacing === 'user' ? 'scaleX(-1)' : 'none' }} />
               {flippingCamera && (
                 <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
