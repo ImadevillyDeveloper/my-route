@@ -421,6 +421,11 @@ input, textarea, select { font-family: inherit; outline: none; }
   /* Bottom nav: hide on desktop */
   .bottom-nav { display: none !important; }
 
+  /* No bottom nav to clear space for on desktop — components that pad by
+     var(--nav-safe) to sit above the mobile nav bar would otherwise be
+     left with a dead white gap at the bottom of the screen. */
+  :root { --nav-safe: env(safe-area-inset-bottom, 0px); }
+
   /* App header: sticky (not fixed) on desktop, and no longer width-constrained to 430px */
   .app-header {
     position: sticky;
