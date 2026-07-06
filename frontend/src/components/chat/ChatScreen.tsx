@@ -64,6 +64,10 @@ interface ChatMessage {
   pending?: boolean
   failed?: boolean
   localUrl?: string
+  reply_to_id?: number | null
+  reply_to_sender_name?: string | null
+  reply_to_text?: string | null
+  reply_to_deleted?: boolean
 }
 
 const ICON_ROUTE = (
@@ -294,6 +298,20 @@ const formatBytes = (n: number) => {
   return `${(n / (1024 * 1024)).toFixed(1)} МБ`
 }
 
+const attachmentPreviewLabel = (type?: string | null) => ({
+  image: '📷 Фото',
+  file: '📎 Файл',
+  voice: '🎤 Голосовое сообщение',
+  video_note: '📹 Видеосообщение',
+} as Record<string, string>)[type ?? ''] ?? ''
+
+const replySnippet = (m: ChatMessage) =>
+  m.reply_to_deleted ? 'Сообщение удалено' : (m.reply_to_text ?? '')
+
+const ICON_REPLY = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+)
+
 const iconFile = (color: string) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
 )
@@ -412,6 +430,78 @@ const SwipeableChatRow = ({ children, rightLabel, leftLabel, onSwipeRight, onSwi
   )
 }
 
+const MSG_SWIPE_MAX = 52
+const MSG_SWIPE_THRESHOLD = 40
+
+// Swipe a message left to reply, Telegram-style — the bubble slides left,
+// revealing a reply icon pinned to its original right edge underneath.
+const SwipeableMessage = ({ children, onReply, disabled }: {
+  children: React.ReactNode
+  onReply: () => void
+  disabled?: boolean
+}) => {
+  const [dx, setDx] = useState(0)
+  const dragRef = useRef<{ startX: number; startY: number; locked: boolean; moved: boolean } | null>(null)
+  const suppressClickRef = useRef(false)
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (disabled) return
+    dragRef.current = { startX: e.clientX, startY: e.clientY, locked: false, moved: false }
+  }
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    if (!d) return
+    const deltaX = e.clientX - d.startX
+    const deltaY = e.clientY - d.startY
+    if (!d.locked) {
+      if (Math.abs(deltaX) < 6 && Math.abs(deltaY) < 6) return
+      if (deltaX >= 0 || Math.abs(deltaY) > Math.abs(deltaX)) { dragRef.current = null; return }
+      d.locked = true
+    }
+    d.moved = true
+    setDx(Math.max(-MSG_SWIPE_MAX, deltaX))
+  }
+  const endDrag = () => {
+    const d = dragRef.current
+    if (d?.moved) {
+      if (Math.abs(dx) > CLICK_SUPPRESS_THRESHOLD) suppressClickRef.current = true
+      if (dx <= -MSG_SWIPE_THRESHOLD) onReply()
+    }
+    dragRef.current = null
+    setDx(0)
+  }
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      e.stopPropagation()
+      e.preventDefault()
+    }
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{
+        position: 'absolute', top: 0, bottom: 0, right: 0, width: MSG_SWIPE_MAX,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+        opacity: Math.min(1, -dx / MSG_SWIPE_THRESHOLD),
+      }}>
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {ICON_REPLY}
+        </div>
+      </div>
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={onClickCapture}
+        style={{ transform: `translateX(${dx}px)`, transition: dx === 0 ? 'transform 0.2s ease' : 'none', touchAction: 'pan-y' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export default function ChatScreen() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loadedList, setLoadedList] = useState(false)
@@ -433,6 +523,8 @@ export default function ChatScreen() {
   const [titleDraft, setTitleDraft] = useState('')
   const [titleSaving, setTitleSaving] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [msgMenu, setMsgMenu] = useState<ChatMessage | null>(null)
   const [msgMenuPos, setMsgMenuPos] = useState({ x: 0, y: 0 })
   const [confirm, setConfirm] = useState<{ text: React.ReactNode; confirmLabel: string; danger: boolean; onConfirm: () => void } | null>(null)
@@ -473,7 +565,7 @@ export default function ChatScreen() {
   const pendingFilesRef = useRef<Map<number, {
     file: File | Blob
     kind: 'image' | 'file' | 'voice' | 'video_note'
-    opts?: { caption?: string; duration?: number; filename?: string }
+    opts?: { caption?: string; duration?: number; filename?: string; replyToId?: number }
   }>>(new Map())
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -543,6 +635,7 @@ export default function ChatScreen() {
     setMessages([])
     setGroupInfo(null)
     setEditingId(null)
+    setReplyingTo(null)
     setText('')
     setActive(c)
   }
@@ -674,6 +767,13 @@ export default function ChatScreen() {
     setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
   }
 
+  const replyOverrides = (r: ChatMessage | null): Partial<ChatMessage> => r ? {
+    reply_to_id: r.id,
+    reply_to_sender_name: r.sender_name,
+    reply_to_text: r.text || attachmentPreviewLabel(r.attachment_type),
+    reply_to_deleted: false,
+  } : {}
+
   const makeOptimisticMessage = (overrides: Partial<ChatMessage>): ChatMessage => {
     const me = useAuthStore.getState()
     tempIdRef.current -= 1
@@ -713,12 +813,14 @@ export default function ChatScreen() {
       }
       return
     }
+    const replyTo = replyingTo
     setText('')
-    const optimistic = makeOptimisticMessage({ text: value })
+    setReplyingTo(null)
+    const optimistic = makeOptimisticMessage({ text: value, ...replyOverrides(replyTo) })
     setMessages(prev => [...prev, optimistic])
     scrollToBottom()
     try {
-      const res = await postChatMessage(active.key, value)
+      const res = await postChatMessage(active.key, value, replyTo?.id)
       setMessages(prev => prev.map(m => m.id === optimistic.id ? res.data : m))
       loadConversations()
     } catch {
@@ -732,6 +834,9 @@ export default function ChatScreen() {
     opts?: { caption?: string; duration?: number; filename?: string }
   ) => {
     if (!active) return
+    const replyTo = replyingTo
+    setReplyingTo(null)
+    const fullOpts = { ...opts, replyToId: replyTo?.id }
     const localUrl = URL.createObjectURL(file)
     const optimistic = makeOptimisticMessage({
       text: opts?.caption ?? '',
@@ -741,12 +846,13 @@ export default function ChatScreen() {
       attachment_size: kind === 'file' ? file.size : null,
       attachment_duration: opts?.duration ?? null,
       localUrl,
+      ...replyOverrides(replyTo),
     })
-    pendingFilesRef.current.set(optimistic.id, { file, kind, opts })
+    pendingFilesRef.current.set(optimistic.id, { file, kind, opts: fullOpts })
     setMessages(prev => [...prev, optimistic])
     scrollToBottom()
     try {
-      const res = await uploadChatAttachment(active.key, file, kind, opts)
+      const res = await uploadChatAttachment(active.key, file, kind, fullOpts)
       setMessages(prev => prev.map(m => m.id === optimistic.id ? res.data : m))
       loadConversations()
       URL.revokeObjectURL(localUrl)
@@ -1013,6 +1119,7 @@ export default function ChatScreen() {
 
   const startEdit = (m: ChatMessage) => {
     setEditingId(m.id)
+    setReplyingTo(null)
     setText(m.text)
     setMsgMenu(null)
   }
@@ -1021,6 +1128,15 @@ export default function ChatScreen() {
     setEditingId(null)
     setText('')
   }
+
+  const startReply = (m: ChatMessage) => {
+    if (m.deleted || m.pending || m.failed) return
+    setReplyingTo(m)
+    setEditingId(null)
+    setTimeout(() => textareaRef.current?.focus(), 30)
+  }
+
+  const cancelReply = () => setReplyingTo(null)
 
   const removeMessage = (m: ChatMessage, forEveryone: boolean) => {
     setMsgMenu(null)
@@ -1231,10 +1347,20 @@ export default function ChatScreen() {
                         {m.sender_name}{m.sender_role === 'entrepreneur' ? ' · ИП' : ''}
                       </span>
                     )}
+                    <SwipeableMessage onReply={() => startReply(m)} disabled={m.deleted || !!m.pending || !!m.failed}>
                     {!m.deleted && m.attachment_type === 'video_note' ? (
                       <div
                         {...msgLongPressHandlers(m)}
                         style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: m.mine ? 'flex-end' : 'flex-start', touchAction: 'pan-y' }}>
+                        {m.reply_to_id != null && (
+                          <div style={{
+                            display: 'flex', flexDirection: 'column', gap: 1, padding: '5px 9px', marginBottom: 4,
+                            borderLeft: '3px solid var(--orange)', background: 'var(--orange-bg)', borderRadius: 6, maxWidth: 200,
+                          }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--orange)' }}>{m.reply_to_sender_name}</span>
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replySnippet(m)}</span>
+                          </div>
+                        )}
                         <VideoNoteMessagePlayer src={resolveAssetUrl(m.attachment_url!)} pending={m.pending} failed={m.failed} />
                         {m.text && (
                           <div style={{
@@ -1261,6 +1387,19 @@ export default function ChatScreen() {
                         }}>
                         {m.deleted ? 'Сообщение удалено' : (
                           <>
+                            {m.reply_to_id != null && (
+                              <div style={{
+                                display: 'flex', flexDirection: 'column', gap: 1, padding: '5px 9px', marginBottom: 6,
+                                borderLeft: `3px solid ${m.mine ? 'rgba(255,255,255,0.7)' : 'var(--orange)'}`,
+                                background: m.mine ? 'rgba(255,255,255,0.15)' : 'var(--orange-bg)', borderRadius: 6,
+                              }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: m.mine ? 'white' : 'var(--orange)' }}>{m.reply_to_sender_name}</span>
+                                <span style={{
+                                  fontSize: 12, color: m.mine ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200,
+                                }}>{replySnippet(m)}</span>
+                              </div>
+                            )}
                             {m.attachment_type === 'image' && (
                               <div style={{ position: 'relative', marginBottom: m.text ? 6 : 0 }}>
                                 <img src={resolveAssetUrl(m.attachment_url!)}
@@ -1319,6 +1458,7 @@ export default function ChatScreen() {
                         )}
                       </div>
                     )}
+                    </SwipeableMessage>
                     <span style={{ fontSize: 10, color: '#AAA', marginTop: 2, marginRight: m.mine ? 4 : 0, marginLeft: m.mine ? 0 : 4, display: 'flex', alignItems: 'center', gap: 3 }}>
                       {m.failed ? 'не отправлено' : messageTime(m.created_at)}{m.edited && !m.deleted && !m.pending && !m.failed ? ' · изменено' : ''}
                       {m.mine && !m.deleted && (
@@ -1344,6 +1484,18 @@ export default function ChatScreen() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               <span style={{ fontSize: 13, color: 'var(--orange)', fontWeight: 600, flex: 1 }}>Редактирование сообщения</span>
               <button onClick={cancelEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#999', fontSize: 18, lineHeight: 1 }}>✕</button>
+            </div>
+          )}
+          {editingId == null && replyingTo && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #F0F0F0', background: '#FFF8F3' }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 12, color: 'var(--orange)', fontWeight: 700 }}>Ответ {replyingTo.mine ? 'себе' : replyingTo.sender_name}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {replyingTo.deleted ? 'Сообщение удалено' : (replyingTo.text || attachmentPreviewLabel(replyingTo.attachment_type))}
+                </span>
+              </div>
+              <button onClick={cancelReply} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#999', fontSize: 18, lineHeight: 1 }}>✕</button>
             </div>
           )}
           <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImageSelected} />
@@ -1423,9 +1575,13 @@ export default function ChatScreen() {
                 </div>
               )}
               <textarea
+                ref={textareaRef}
                 value={text}
                 onChange={e => setText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } if (e.key === 'Escape' && editingId != null) cancelEdit() }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+                  if (e.key === 'Escape') { if (editingId != null) cancelEdit(); else if (replyingTo) cancelReply() }
+                }}
                 placeholder="Сообщение..."
                 rows={1}
                 style={{ flex: 1, resize: 'none', border: '1.5px solid var(--border)', borderRadius: 20, padding: '10px 16px', fontSize: 14, fontFamily: 'inherit', maxHeight: 100 }}
@@ -1541,6 +1697,11 @@ export default function ChatScreen() {
                 width: 200, background: 'white', borderRadius: 12,
                 boxShadow: '0 6px 28px rgba(0,0,0,0.2)', border: '1px solid #EEE', overflow: 'hidden',
               }}>
+              <div onClick={() => { startReply(msgMenu); setMsgMenu(null) }}
+                style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: '1px solid #F5F5F5' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>Ответить</span>
+              </div>
               {msgMenu.mine && (
                 <div onClick={() => startEdit(msgMenu)}
                   style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: '1px solid #F5F5F5' }}>

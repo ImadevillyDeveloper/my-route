@@ -234,6 +234,7 @@ class ChatMessage(Base):
     attachment_name = Column(String, nullable=True)   # original filename, for "file"
     attachment_size = Column(Integer, nullable=True)  # bytes, for "file"
     attachment_duration = Column(Integer, nullable=True)  # seconds, for "voice" / "video_note"
+    reply_to_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True)
 
 
 class ChatRead(Base):

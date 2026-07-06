@@ -543,9 +543,19 @@ def _message_out(
     current_user: models.User,
     avatar_url: str | None = None,
     all_read_at: "datetime | None" = None,
+    reply_to: "models.ChatMessage | None" = None,
 ) -> schemas.ChatMessageOut:
     deleted = m.deleted_at is not None
     mine = m.sender_id == current_user.id
+
+    reply_deleted = False
+    reply_sender_name = None
+    reply_text = None
+    if reply_to is not None:
+        reply_deleted = reply_to.deleted_at is not None
+        reply_sender_name = reply_to.sender_name
+        reply_text = DELETED_PLACEHOLDER if reply_deleted else (reply_to.text or _attachment_preview(reply_to.attachment_type))
+
     return schemas.ChatMessageOut(
         id=m.id,
         conversation_key=m.conversation_key,
@@ -564,6 +574,10 @@ def _message_out(
         attachment_name=None if deleted else m.attachment_name,
         attachment_size=None if deleted else m.attachment_size,
         attachment_duration=None if deleted else m.attachment_duration,
+        reply_to_id=None if deleted else m.reply_to_id,
+        reply_to_sender_name=None if deleted else reply_sender_name,
+        reply_to_text=None if deleted else reply_text,
+        reply_to_deleted=reply_deleted,
     )
 
 
@@ -598,7 +612,15 @@ def get_messages(
     } if sender_ids else {}
     all_read_at = _all_read_at(conversation_key, current_user.id, db)
 
-    return [_message_out(m, current_user, avatars.get(m.sender_id), all_read_at) for m in msgs]
+    reply_ids = {m.reply_to_id for m in msgs if m.reply_to_id}
+    replies = {
+        r.id: r for r in db.query(models.ChatMessage).filter(models.ChatMessage.id.in_(reply_ids)).all()
+    } if reply_ids else {}
+
+    return [
+        _message_out(m, current_user, avatars.get(m.sender_id), all_read_at, replies.get(m.reply_to_id))
+        for m in msgs
+    ]
 
 
 @router.post("/messages", response_model=schemas.ChatMessageOut, status_code=201)
@@ -615,19 +637,26 @@ def post_message(
     if not _can_access(body.conversation_key, current_user, db):
         raise HTTPException(403, "Нет доступа к этому чату")
 
+    reply_to = None
+    if body.reply_to_id is not None:
+        reply_to = db.query(models.ChatMessage).filter_by(
+            id=body.reply_to_id, conversation_key=body.conversation_key
+        ).first()
+
     msg = models.ChatMessage(
         conversation_key=body.conversation_key,
         sender_id=current_user.id,
         sender_name=current_user.full_name,
         sender_role=current_user.role,
         text=text,
+        reply_to_id=reply_to.id if reply_to else None,
     )
     db.add(msg)
     db.commit()
     db.refresh(msg)
     _mark_read(current_user.id, body.conversation_key, db)
 
-    return _message_out(msg, current_user, current_user.avatar_url)
+    return _message_out(msg, current_user, current_user.avatar_url, reply_to=reply_to)
 
 
 @router.post("/messages/upload", response_model=schemas.ChatMessageOut, status_code=201)
@@ -636,6 +665,7 @@ async def upload_chat_attachment(
     kind: str = Form(...),
     caption: str = Form(""),
     duration: int | None = Form(None),
+    reply_to_id: int | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -644,6 +674,12 @@ async def upload_chat_attachment(
         raise HTTPException(400, "Неверный тип вложения")
     if not _can_access(conversation_key, current_user, db):
         raise HTTPException(403, "Нет доступа к этому чату")
+
+    reply_to = None
+    if reply_to_id is not None:
+        reply_to = db.query(models.ChatMessage).filter_by(
+            id=reply_to_id, conversation_key=conversation_key
+        ).first()
 
     caption = caption.strip()
     if len(caption) > 2000:
@@ -672,13 +708,14 @@ async def upload_chat_attachment(
         attachment_name=file.filename if kind == "file" else None,
         attachment_size=len(data) if kind == "file" else None,
         attachment_duration=duration if kind in ("voice", "video_note") else None,
+        reply_to_id=reply_to.id if reply_to else None,
     )
     db.add(msg)
     db.commit()
     db.refresh(msg)
     _mark_read(current_user.id, conversation_key, db)
 
-    return _message_out(msg, current_user, current_user.avatar_url)
+    return _message_out(msg, current_user, current_user.avatar_url, reply_to=reply_to)
 
 
 @router.put("/messages/{message_id}", response_model=schemas.ChatMessageOut)
@@ -706,7 +743,8 @@ def edit_message(
     db.refresh(msg)
 
     all_read_at = _all_read_at(msg.conversation_key, current_user.id, db)
-    return _message_out(msg, current_user, current_user.avatar_url, all_read_at)
+    reply_to = db.query(models.ChatMessage).filter_by(id=msg.reply_to_id).first() if msg.reply_to_id else None
+    return _message_out(msg, current_user, current_user.avatar_url, all_read_at, reply_to)
 
 
 @router.delete("/messages/{message_id}")

@@ -80,8 +80,8 @@ export const getNearestStop = (routeNumber: string, lat: number, lng: number) =>
 export const getChatConversations = () => api.get('/chat/conversations')
 export const getChatMessages = (conversationKey: string) =>
   api.get('/chat/messages', { params: { conversation_key: conversationKey } })
-export const postChatMessage = (conversationKey: string, text: string) =>
-  api.post('/chat/messages', { conversation_key: conversationKey, text })
+export const postChatMessage = (conversationKey: string, text: string, replyToId?: number) =>
+  api.post('/chat/messages', { conversation_key: conversationKey, text, reply_to_id: replyToId })
 export const getChatRouteMembers = (routeNumber: string) =>
   api.get('/chat/route-members', { params: { route_number: routeNumber } })
 export const setChatConversationState = (conversationKey: string, state: { pinned?: boolean; hidden?: boolean }) =>
@@ -111,13 +111,14 @@ export const uploadChatAttachment = (
   conversationKey: string,
   file: File | Blob,
   kind: 'image' | 'file' | 'voice' | 'video_note',
-  opts?: { caption?: string; duration?: number; filename?: string }
+  opts?: { caption?: string; duration?: number; filename?: string; replyToId?: number }
 ) => {
   const fd = new FormData()
   fd.append('conversation_key', conversationKey)
   fd.append('kind', kind)
   fd.append('caption', opts?.caption ?? '')
   if (opts?.duration != null) fd.append('duration', String(Math.round(opts.duration)))
+  if (opts?.replyToId != null) fd.append('reply_to_id', String(opts.replyToId))
   fd.append('file', file, opts?.filename ?? (file instanceof File ? file.name : 'attachment'))
   return api.post('/chat/messages/upload', fd, { timeout: 60000 })
 }

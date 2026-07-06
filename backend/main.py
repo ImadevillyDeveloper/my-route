@@ -44,6 +44,7 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         _add_col(conn, "chat_messages", "attachment_name",     "VARCHAR")
         _add_col(conn, "chat_messages", "attachment_size",     "INTEGER")
         _add_col(conn, "chat_messages", "attachment_duration", "INTEGER")
+        _add_col(conn, "chat_messages", "reply_to_id",         "INTEGER")
 else:
     # Postgres (Supabase) — same idea, but ALTER TABLE ... ADD COLUMN IF NOT EXISTS
     # is native syntax here, so no manual PRAGMA check is needed.
@@ -80,6 +81,9 @@ else:
         ))
         conn.execute(text(
             "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_duration INTEGER"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER"
         ))
         conn.commit()
 

@@ -179,11 +179,16 @@ class ChatMessageOut(BaseModel):
     attachment_name: Optional[str] = None
     attachment_size: Optional[int] = None
     attachment_duration: Optional[int] = None
+    reply_to_id: Optional[int] = None
+    reply_to_sender_name: Optional[str] = None
+    reply_to_text: Optional[str] = None
+    reply_to_deleted: bool = False
 
 
 class ChatMessageCreate(BaseModel):
     conversation_key: str
     text: str
+    reply_to_id: Optional[int] = None
 
 
 class ChatMessageUpdate(BaseModel):
