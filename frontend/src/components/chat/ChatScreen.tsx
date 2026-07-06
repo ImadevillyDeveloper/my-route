@@ -438,6 +438,7 @@ export default function ChatScreen() {
   const listRef = useRef<HTMLDivElement>(null)
   const groupAvatarInputRef = useRef<HTMLInputElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [attachMenuPos, setAttachMenuPos] = useState({ left: 8, bottom: 60 })
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [recording, setRecording] = useState<{ kind: 'voice' | 'video_note' } | null>(null)
@@ -445,11 +446,14 @@ export default function ChatScreen() {
   const [videoPreviewStream, setVideoPreviewStream] = useState<MediaStream | null>(null)
   const [videoFacing, setVideoFacing] = useState<'user' | 'environment'>('user')
   const [flippingCamera, setFlippingCamera] = useState(false)
+  const [recordingPaused, setRecordingPaused] = useState(false)
   const videoPreviewRef = useRef<HTMLVideoElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordStreamRef = useRef<MediaStream | null>(null)
-  const recordStartRef = useRef(0)
+  const recordElapsedRef = useRef(0)
+  const recordLastTickRef = useRef(0)
+  const recordingPausedRef = useRef(false)
   const recordTimerRef = useRef<number | null>(null)
   const tempIdRef = useRef(0)
   const pendingFilesRef = useRef<Map<number, {
@@ -814,14 +818,35 @@ export default function ChatScreen() {
       recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
       recorder.start()
       mediaRecorderRef.current = recorder
-      recordStartRef.current = Date.now()
+      recordElapsedRef.current = 0
+      recordLastTickRef.current = Date.now()
+      recordingPausedRef.current = false
+      setRecordingPaused(false)
       setRecordSeconds(0)
       setRecording({ kind })
       recordTimerRef.current = window.setInterval(() => {
-        setRecordSeconds(Math.round((Date.now() - recordStartRef.current) / 1000))
+        const now = Date.now()
+        if (!recordingPausedRef.current) recordElapsedRef.current += now - recordLastTickRef.current
+        recordLastTickRef.current = now
+        setRecordSeconds(Math.round(recordElapsedRef.current / 1000))
       }, 250)
     } catch {
       setRecording(null)
+    }
+  }
+
+  const togglePauseRecording = () => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder) return
+    if (recorder.state === 'recording') {
+      recorder.pause()
+      recordingPausedRef.current = true
+      setRecordingPaused(true)
+    } else if (recorder.state === 'paused') {
+      recordLastTickRef.current = Date.now()
+      recorder.resume()
+      recordingPausedRef.current = false
+      setRecordingPaused(false)
     }
   }
 
@@ -858,13 +883,14 @@ export default function ChatScreen() {
   const stopRecording = (send: boolean) => {
     const recorder = mediaRecorderRef.current
     const kind = recording?.kind
-    const duration = Math.round((Date.now() - recordStartRef.current) / 1000)
+    const duration = Math.round(recordElapsedRef.current / 1000)
     if (recordTimerRef.current != null) { clearInterval(recordTimerRef.current); recordTimerRef.current = null }
     recordStreamRef.current?.getTracks().forEach(t => t.stop())
     recordStreamRef.current = null
     setVideoPreviewStream(null)
     setRecording(null)
     setRecordSeconds(0)
+    setRecordingPaused(false)
     if (!recorder || !kind) return
     if (!send) {
       recorder.onstop = null
@@ -1228,38 +1254,18 @@ export default function ChatScreen() {
           <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImageSelected} />
           <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={onFileSelected} />
 
-          {recording ? (
+          {recording?.kind === 'voice' ? (
             <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 12, alignItems: 'center' }}>
               <button onClick={() => stopRecording(false)}
                 style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                {recording.kind === 'video_note' && (
-                  <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
-                    <video ref={videoPreviewRef} autoPlay muted playsInline
-                      style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', transform: videoFacing === 'user' ? 'scaleX(-1)' : 'none' }} />
-                    {flippingCamera && (
-                      <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <PendingSpinner size={16} color="white" />
-                      </div>
-                    )}
-                  </div>
-                )}
-                {recording.kind === 'video_note' && (
-                  <button onClick={flipCamera} disabled={flippingCamera}
-                    style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
-                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
-                    </svg>
-                  </button>
-                )}
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF3B30', flexShrink: 0, animation: 'chat-rec-blink 1s infinite' }} />
                 <span style={{ fontSize: 14, color: '#666', fontVariantNumeric: 'tabular-nums' }}>
                   {String(Math.floor(recordSeconds / 60)).padStart(1, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
                 </span>
-                <span style={{ fontSize: 13, color: '#AAA' }}>{recording.kind === 'voice' ? 'Голосовое' : 'Видеосообщение'}</span>
+                <span style={{ fontSize: 13, color: '#AAA' }}>Голосовое</span>
               </div>
               <button onClick={() => stopRecording(true)}
                 style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
@@ -1269,7 +1275,13 @@ export default function ChatScreen() {
           ) : (
             <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 8, alignItems: 'flex-end', position: 'relative' }}>
               {editingId == null && (
-                <button onClick={() => setAttachMenuOpen(v => !v)} onMouseDown={e => e.preventDefault()}
+                <button
+                  onClick={e => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setAttachMenuPos({ left: r.left, bottom: window.innerHeight - r.top + 6 })
+                    setAttachMenuOpen(v => !v)
+                  }}
+                  onMouseDown={e => e.preventDefault()}
                   style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#999' }}>
                   <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                 </button>
@@ -1277,7 +1289,7 @@ export default function ChatScreen() {
               {attachMenuOpen && (
                 <div onClick={() => setAttachMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999 }}>
                   <div onClick={e => e.stopPropagation()} className="chat-ctx-menu"
-                    style={{ position: 'fixed', bottom: 'calc(60px + var(--nav-safe))', left: 8, width: 180, background: 'white', borderRadius: 12, boxShadow: '0 6px 28px rgba(0,0,0,0.2)', border: '1px solid #EEE', overflow: 'hidden' }}>
+                    style={{ position: 'fixed', bottom: attachMenuPos.bottom, left: attachMenuPos.left, width: 180, background: 'white', borderRadius: 12, boxShadow: '0 6px 28px rgba(0,0,0,0.2)', border: '1px solid #EEE', overflow: 'hidden' }}>
                     <div onClick={() => imageInputRef.current?.click()}
                       style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: '1px solid #F5F5F5' }}>
                       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -1322,6 +1334,70 @@ export default function ChatScreen() {
             </div>
           )}
         </div>
+
+        {recording?.kind === 'video_note' && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(12,12,14,0.6)', backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{ position: 'relative', width: 260, height: 260 }}>
+              <video ref={videoPreviewRef} autoPlay muted playsInline
+                style={{ width: 260, height: 260, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000', transform: videoFacing === 'user' ? 'scaleX(-1)' : 'none' }} />
+              {flippingCamera && (
+                <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PendingSpinner size={30} color="white" />
+                </div>
+              )}
+              <button onClick={togglePauseRecording}
+                style={{
+                  position: 'absolute', right: -6, bottom: 8, transform: 'translateX(100%)',
+                  width: 48, height: 48, borderRadius: '50%', border: 'none', background: 'rgba(70,70,74,0.75)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                }}>
+                {recordingPaused
+                  ? <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M6 4l14 8-14 8z" /></svg>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><rect x="5" y="4" width="5" height="16" rx="1.5" /><rect x="14" y="4" width="5" height="16" rx="1.5" /></svg>
+                }
+              </button>
+            </div>
+
+            <div style={{
+              position: 'absolute', left: 0, right: 0, bottom: 'calc(28px + env(safe-area-inset-bottom, 0px))',
+              padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <button onClick={flipCamera} disabled={flippingCamera}
+                style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(70,70,74,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" /><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+                </svg>
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(70,70,74,0.75)', borderRadius: 26, padding: '12px 18px', minWidth: 0 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#FF3B30', flexShrink: 0, animation: recordingPaused ? 'none' : 'chat-rec-blink 1s infinite' }} />
+                  <span style={{ color: 'white', fontSize: 15, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                    {String(Math.floor(recordSeconds / 60)).padStart(1, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
+                  </span>
+                  <button onClick={() => stopRecording(false)}
+                    style={{ background: 'none', border: 'none', color: '#7C8CFF', fontSize: 15, fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>
+                    Отмена
+                  </button>
+                </div>
+                <button onClick={() => stopRecording(true)}
+                  style={{
+                    width: 56, height: 56, borderRadius: '50%', border: 'none', background: '#5B6EF5',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
+                    boxShadow: '0 4px 16px rgba(91,110,245,0.5)',
+                  }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {msgMenu && (
           <div onClick={() => setMsgMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 999 }}>
