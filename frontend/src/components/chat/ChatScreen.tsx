@@ -461,6 +461,8 @@ export default function ChatScreen() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordStreamRef = useRef<MediaStream | null>(null)
+  const recordCanvasStreamRef = useRef<MediaStream | null>(null)
+  const drawFrameRafRef = useRef<number | null>(null)
   const recordElapsedRef = useRef(0)
   const recordLastTickRef = useRef(0)
   const recordingPausedRef = useRef(false)
@@ -525,7 +527,9 @@ export default function ChatScreen() {
         mediaRecorderRef.current.stop()
       }
       recordStreamRef.current?.getTracks().forEach(t => t.stop())
+      recordCanvasStreamRef.current?.getTracks().forEach(t => t.stop())
       if (recordTimerRef.current != null) clearInterval(recordTimerRef.current)
+      if (drawFrameRafRef.current != null) cancelAnimationFrame(drawFrameRafRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.key])
@@ -817,9 +821,36 @@ export default function ChatScreen() {
           : { audio: true, video: { width: { ideal: 320 }, height: { ideal: 320 }, facingMode: 'user' } }
       )
       recordStreamRef.current = stream
-      if (kind === 'video_note') setVideoPreviewStream(stream)
+
+      // For video notes, record from a <canvas> fed by the preview <video>
+      // rather than the raw camera stream directly. A camera flip mid-recording
+      // then just swaps what the canvas draws from — the MediaRecorder's own
+      // stream (and thus its state/pause/stop) never changes, which live
+      // track-swapping on the camera stream turned out not to support reliably.
+      let recorderStream: MediaStream = stream
+      if (kind === 'video_note') {
+        setVideoPreviewStream(stream)
+        const canvas = document.createElement('canvas')
+        canvas.width = 320
+        canvas.height = 320
+        const ctx = canvas.getContext('2d')
+        const drawFrame = () => {
+          const v = videoPreviewRef.current
+          if (v && ctx && v.readyState >= 2 && v.videoWidth > 0) {
+            const size = Math.min(v.videoWidth, v.videoHeight)
+            ctx.drawImage(v, (v.videoWidth - size) / 2, (v.videoHeight - size) / 2, size, size, 0, 0, canvas.width, canvas.height)
+          }
+          drawFrameRafRef.current = requestAnimationFrame(drawFrame)
+        }
+        drawFrameRafRef.current = requestAnimationFrame(drawFrame)
+        const canvasStream = canvas.captureStream(30)
+        stream.getAudioTracks().forEach(t => canvasStream.addTrack(t))
+        recordCanvasStreamRef.current = canvasStream
+        recorderStream = canvasStream
+      }
+
       const mimeType = pickRecorderMime(kind)
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      const recorder = mimeType ? new MediaRecorder(recorderStream, { mimeType }) : new MediaRecorder(recorderStream)
       recordedChunksRef.current = []
       recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
       recorder.start()
@@ -864,43 +895,27 @@ export default function ChatScreen() {
 
   const flipCamera = async () => {
     if (!recording || recording.kind !== 'video_note' || flippingCamera) return
-    const recorder = mediaRecorderRef.current
     const oldStream = recordStreamRef.current
-    if (!recorder || !oldStream) return
+    if (!oldStream) return
     const nextFacing = videoFacing === 'user' ? 'environment' : 'user'
     setFlippingCamera(true)
-    const wasPaused = recorder.state === 'paused'
     try {
-      // Swapping the video track live on a MediaStream mid-recording is not
-      // reliably supported — it silently breaks pause/resume and stop() on
-      // some browsers. Instead, cleanly end this segment (flushing its data
-      // into recordedChunksRef) and start a fresh recorder on the new camera,
-      // appending to the same chunk list so the final blob has both segments.
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+      // The recorder consumes a <canvas> stream (see startRecording), not the
+      // camera stream directly, so flipping only needs to swap what the draw
+      // loop reads from — the recorder/audio track are untouched and keep running.
+      const newVideoStream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 320 }, height: { ideal: 320 }, facingMode: nextFacing },
       })
+      const newVideoTrack = newVideoStream.getVideoTracks()[0]
+      if (!newVideoTrack) return
 
-      await new Promise<void>(resolve => {
-        if (recorder.state === 'inactive') { resolve(); return }
-        recorder.onstop = () => resolve()
-        recorder.stop()
-      })
-      recorder.onstop = null
-      oldStream.getTracks().forEach(t => t.stop())
-
-      const mimeType = pickRecorderMime('video_note')
-      const newRecorder = mimeType ? new MediaRecorder(newStream, { mimeType }) : new MediaRecorder(newStream)
-      newRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
-      newRecorder.start()
-      if (wasPaused) newRecorder.pause()
-
-      mediaRecorderRef.current = newRecorder
-      recordStreamRef.current = newStream
-      setVideoPreviewStream(newStream)
+      oldStream.getVideoTracks().forEach(t => t.stop())
+      const newPreviewStream = new MediaStream([newVideoTrack, ...oldStream.getAudioTracks()])
+      recordStreamRef.current = newPreviewStream
+      setVideoPreviewStream(newPreviewStream)
       setVideoFacing(nextFacing)
     } catch {
-      // camera unavailable (e.g. device has no second camera) — keep recording as-is
+      // camera unavailable (e.g. device has no second camera) — keep current one
     } finally {
       setFlippingCamera(false)
     }
@@ -911,6 +926,9 @@ export default function ChatScreen() {
     const kind = recording?.kind
     const duration = Math.round(recordElapsedRef.current / 1000)
     if (recordTimerRef.current != null) { clearInterval(recordTimerRef.current); recordTimerRef.current = null }
+    if (drawFrameRafRef.current != null) { cancelAnimationFrame(drawFrameRafRef.current); drawFrameRafRef.current = null }
+    recordCanvasStreamRef.current?.getTracks().forEach(t => t.stop())
+    recordCanvasStreamRef.current = null
     recordStreamRef.current?.getTracks().forEach(t => t.stop())
     recordStreamRef.current = null
     setVideoPreviewStream(null)
