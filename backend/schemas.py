@@ -173,6 +173,7 @@ class ChatMessageOut(BaseModel):
     mine: bool = False
     edited: bool = False
     deleted: bool = False
+    read: bool = False
 
 
 class ChatMessageCreate(BaseModel):

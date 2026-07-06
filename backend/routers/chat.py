@@ -104,6 +104,50 @@ def _mark_read(user_id: int, key: str, db: Session) -> None:
     db.commit()
 
 
+def _conversation_recipients(key: str, sender_id: int, db: Session) -> list[int]:
+    """Everyone in the conversation other than the sender (recipients of a 'read' receipt)."""
+    if key.startswith("dm:"):
+        parts = key.split(":")
+        if len(parts) != 3:
+            return []
+        try:
+            ids = {int(parts[1]), int(parts[2])}
+        except ValueError:
+            return []
+        ids.discard(sender_id)
+        return list(ids)
+    if key.startswith("route:"):
+        route = key.split(":", 1)[1]
+        removed_ids = {
+            r.user_id for r in db.query(models.ChatGroupRemoved).filter_by(conversation_key=key).all()
+        }
+        drivers = db.query(models.User).filter(
+            models.User.role == models.UserRole.driver,
+            models.User.route_number == route,
+            ~models.User.id.in_(removed_ids),
+        ).all()
+        owner_ids = {d.owner_id for d in drivers if d.owner_id}
+        ids = {d.id for d in drivers} | owner_ids
+        ids.discard(sender_id)
+        return list(ids)
+    return []
+
+
+def _all_read_at(key: str, sender_id: int, db: Session) -> "datetime | None":
+    """The earliest time by which every recipient had read the conversation, or None if
+    at least one recipient hasn't read it yet (or never has)."""
+    recipient_ids = _conversation_recipients(key, sender_id, db)
+    if not recipient_ids:
+        return None
+    reads = db.query(models.ChatRead).filter(
+        models.ChatRead.conversation_key == key,
+        models.ChatRead.user_id.in_(recipient_ids),
+    ).all()
+    if len(reads) < len(recipient_ids):
+        return None
+    return min(r.last_read_at for r in reads)
+
+
 def _unread_count(user_id: int, key: str, db: Session) -> int:
     read_row = db.query(models.ChatRead).filter_by(user_id=user_id, conversation_key=key).first()
     q = db.query(models.ChatMessage).filter(
@@ -482,8 +526,14 @@ def remove_group_member(
     return {"ok": True}
 
 
-def _message_out(m: models.ChatMessage, current_user: models.User, avatar_url: str | None = None) -> schemas.ChatMessageOut:
+def _message_out(
+    m: models.ChatMessage,
+    current_user: models.User,
+    avatar_url: str | None = None,
+    all_read_at: "datetime | None" = None,
+) -> schemas.ChatMessageOut:
     deleted = m.deleted_at is not None
+    mine = m.sender_id == current_user.id
     return schemas.ChatMessageOut(
         id=m.id,
         conversation_key=m.conversation_key,
@@ -493,9 +543,10 @@ def _message_out(m: models.ChatMessage, current_user: models.User, avatar_url: s
         sender_avatar_url=avatar_url,
         text="" if deleted else m.text,
         created_at=m.created_at,
-        mine=(m.sender_id == current_user.id),
+        mine=mine,
         edited=m.edited_at is not None,
         deleted=deleted,
+        read=bool(mine and all_read_at and m.created_at <= all_read_at),
     )
 
 
@@ -528,8 +579,9 @@ def get_messages(
         u.id: u.avatar_url
         for u in db.query(models.User).filter(models.User.id.in_(sender_ids)).all()
     } if sender_ids else {}
+    all_read_at = _all_read_at(conversation_key, current_user.id, db)
 
-    return [_message_out(m, current_user, avatars.get(m.sender_id)) for m in msgs]
+    return [_message_out(m, current_user, avatars.get(m.sender_id), all_read_at) for m in msgs]
 
 
 @router.post("/messages", response_model=schemas.ChatMessageOut, status_code=201)
@@ -585,7 +637,8 @@ def edit_message(
     db.commit()
     db.refresh(msg)
 
-    return _message_out(msg, current_user, current_user.avatar_url)
+    all_read_at = _all_read_at(msg.conversation_key, current_user.id, db)
+    return _message_out(msg, current_user, current_user.avatar_url, all_read_at)
 
 
 @router.delete("/messages/{message_id}")

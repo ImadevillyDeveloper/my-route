@@ -52,6 +52,7 @@ interface ChatMessage {
   mine: boolean
   edited: boolean
   deleted: boolean
+  read: boolean
 }
 
 const ICON_ROUTE = (
@@ -95,6 +96,13 @@ const ICON_CAMERA = (
 )
 const ICON_SHIELD = (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--orange)" stroke="none"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>
+)
+
+const ReadTicks = ({ read }: { read: boolean }) => (
+  <svg width="15" height="10" viewBox="0 0 15 10" fill="none" stroke={read ? '#34B7F1' : '#AAA'} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 5.5L4 8.5L9.5 1.5"/>
+    {read && <path d="M5.5 5.5L8.5 8.5L14 1.5"/>}
+  </svg>
 )
 
 const dayLabel = (iso: string) => {
@@ -685,8 +693,9 @@ export default function ChatScreen() {
                       }}>
                       {m.deleted ? 'Сообщение удалено' : m.text}
                     </div>
-                    <span style={{ fontSize: 10, color: '#AAA', marginTop: 2, marginRight: m.mine ? 4 : 0, marginLeft: m.mine ? 0 : 4 }}>
+                    <span style={{ fontSize: 10, color: '#AAA', marginTop: 2, marginRight: m.mine ? 4 : 0, marginLeft: m.mine ? 0 : 4, display: 'flex', alignItems: 'center', gap: 3 }}>
                       {messageTime(m.created_at)}{m.edited && !m.deleted ? ' · изменено' : ''}
+                      {m.mine && !m.deleted && <ReadTicks read={m.read} />}
                     </span>
                   </div>
                 </div>
