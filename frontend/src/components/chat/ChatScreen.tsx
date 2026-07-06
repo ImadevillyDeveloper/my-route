@@ -6,6 +6,7 @@ import {
   uploadChatAttachment,
 } from '../../api/client'
 import LogoLoader from '../common/LogoLoader'
+import { useAuthStore } from '../../store/auth'
 
 interface Conversation {
   key: string
@@ -59,6 +60,9 @@ interface ChatMessage {
   attachment_name?: string | null
   attachment_size?: number | null
   attachment_duration?: number | null
+  pending?: boolean
+  failed?: boolean
+  localUrl?: string
 }
 
 const ICON_ROUTE = (
@@ -110,6 +114,30 @@ const ReadTicks = ({ read }: { read: boolean }) => (
     {read && <path d="M5.5 5.5L8.5 8.5L14 1.5"/>}
   </svg>
 )
+
+const PendingSpinner = ({ size = 11, color = '#AAA' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round">
+    <circle cx="12" cy="12" r="9" opacity="0.3" />
+    <path d="M21 12a9 9 0 0 0-9-9" />
+  </svg>
+)
+
+const FailedBadge = ({ size = 13 }: { size?: number }) => (
+  <span style={{ width: size, height: size, borderRadius: '50%', background: '#FF3B30', color: 'white', fontSize: size * 0.7, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, flexShrink: 0 }}>!</span>
+)
+
+const MediaStatusOverlay = ({ pending, failed, round }: { pending?: boolean; failed?: boolean; round?: boolean }) => {
+  if (!pending && !failed) return null
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, borderRadius: round ? '50%' : 12,
+      background: failed ? 'rgba(255,59,48,0.3)' : 'rgba(0,0,0,0.35)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+    }}>
+      {failed ? <FailedBadge size={28} /> : <PendingSpinner size={26} color="white" />}
+    </div>
+  )
+}
 
 const dayLabel = (iso: string) => {
   const d = new Date(iso)
@@ -278,7 +306,6 @@ export default function ChatScreen() {
   const listRef = useRef<HTMLDivElement>(null)
   const groupAvatarInputRef = useRef<HTMLInputElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [recording, setRecording] = useState<{ kind: 'voice' | 'video_note' } | null>(null)
@@ -290,6 +317,12 @@ export default function ChatScreen() {
   const recordStreamRef = useRef<MediaStream | null>(null)
   const recordStartRef = useRef(0)
   const recordTimerRef = useRef<number | null>(null)
+  const tempIdRef = useRef(0)
+  const pendingFilesRef = useRef<Map<number, {
+    file: File | Blob
+    kind: 'image' | 'file' | 'voice' | 'video_note'
+    opts?: { caption?: string; duration?: number; filename?: string }
+  }>>(new Map())
 
   const loadConversations = () => {
     getChatConversations().then(r => { setConversations(r.data); setLoadedList(true) }).catch(() => setLoadedList(true))
@@ -319,7 +352,7 @@ export default function ChatScreen() {
   const loadMessages = (key: string) => {
     getChatMessages(key).then(r => {
       if (activeKeyRef.current !== key) return
-      setMessages(r.data)
+      setMessages(prev => [...r.data, ...prev.filter(m => m.pending || m.failed)])
       setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
     }).catch(() => {})
   }
@@ -480,14 +513,38 @@ export default function ChatScreen() {
     })
   }
 
+  const scrollToBottom = () => {
+    setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
+  }
+
+  const makeOptimisticMessage = (overrides: Partial<ChatMessage>): ChatMessage => {
+    const me = useAuthStore.getState()
+    tempIdRef.current -= 1
+    return {
+      id: tempIdRef.current,
+      conversation_key: active?.key ?? '',
+      sender_id: me.userId ?? 0,
+      sender_name: me.fullName ?? '',
+      sender_role: me.role ?? '',
+      text: '',
+      created_at: new Date().toISOString(),
+      mine: true,
+      edited: false,
+      deleted: false,
+      read: false,
+      pending: true,
+      ...overrides,
+    }
+  }
+
   const send = async () => {
     const value = text.trim()
-    if (!value || !active || sending) return
-    setSending(true)
+    if (!value || !active) return
     if (editingId != null) {
       const id = editingId
       setText('')
       setEditingId(null)
+      setSending(true)
       try {
         const res = await editChatMessage(id, value)
         setMessages(prev => prev.map(m => m.id === id ? res.data : m))
@@ -500,15 +557,15 @@ export default function ChatScreen() {
       return
     }
     setText('')
+    const optimistic = makeOptimisticMessage({ text: value })
+    setMessages(prev => [...prev, optimistic])
+    scrollToBottom()
     try {
       const res = await postChatMessage(active.key, value)
-      setMessages(prev => [...prev, res.data])
-      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
+      setMessages(prev => prev.map(m => m.id === optimistic.id ? res.data : m))
       loadConversations()
     } catch {
-      setText(value)
-    } finally {
-      setSending(false)
+      setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, pending: false, failed: true } : m))
     }
   }
 
@@ -518,17 +575,61 @@ export default function ChatScreen() {
     opts?: { caption?: string; duration?: number; filename?: string }
   ) => {
     if (!active) return
-    setUploading(true)
+    const localUrl = URL.createObjectURL(file)
+    const optimistic = makeOptimisticMessage({
+      text: opts?.caption ?? '',
+      attachment_url: localUrl,
+      attachment_type: kind,
+      attachment_name: opts?.filename ?? (file instanceof File ? file.name : null),
+      attachment_size: kind === 'file' ? file.size : null,
+      attachment_duration: opts?.duration ?? null,
+      localUrl,
+    })
+    pendingFilesRef.current.set(optimistic.id, { file, kind, opts })
+    setMessages(prev => [...prev, optimistic])
+    scrollToBottom()
     try {
       const res = await uploadChatAttachment(active.key, file, kind, opts)
-      setMessages(prev => [...prev, res.data])
-      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
+      setMessages(prev => prev.map(m => m.id === optimistic.id ? res.data : m))
       loadConversations()
+      URL.revokeObjectURL(localUrl)
+      pendingFilesRef.current.delete(optimistic.id)
     } catch {
-      // upload failed silently — user can retry
-    } finally {
-      setUploading(false)
+      setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, pending: false, failed: true } : m))
     }
+  }
+
+  const retryMessage = (m: ChatMessage) => {
+    if (!active || !m.failed) return
+    setMessages(prev => prev.map(x => x.id === m.id ? { ...x, failed: false, pending: true } : x))
+    if (m.attachment_type) {
+      const payload = pendingFilesRef.current.get(m.id)
+      if (!payload) {
+        setMessages(prev => prev.map(x => x.id === m.id ? { ...x, failed: true, pending: false } : x))
+        return
+      }
+      uploadChatAttachment(active.key, payload.file, payload.kind, payload.opts)
+        .then(res => {
+          setMessages(prev => prev.map(x => x.id === m.id ? res.data : x))
+          loadConversations()
+          if (m.localUrl) URL.revokeObjectURL(m.localUrl)
+          pendingFilesRef.current.delete(m.id)
+        })
+        .catch(() => setMessages(prev => prev.map(x => x.id === m.id ? { ...x, pending: false, failed: true } : x)))
+    } else {
+      postChatMessage(active.key, m.text)
+        .then(res => {
+          setMessages(prev => prev.map(x => x.id === m.id ? res.data : x))
+          loadConversations()
+        })
+        .catch(() => setMessages(prev => prev.map(x => x.id === m.id ? { ...x, pending: false, failed: true } : x)))
+    }
+  }
+
+  const removeFailedMessage = (m: ChatMessage) => {
+    setMessages(prev => prev.filter(x => x.id !== m.id))
+    if (m.localUrl) URL.revokeObjectURL(m.localUrl)
+    pendingFilesRef.current.delete(m.id)
   }
 
   const onImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -559,7 +660,7 @@ export default function ChatScreen() {
   }
 
   const startRecording = async (kind: 'voice' | 'video_note') => {
-    if (recording || uploading) return
+    if (recording) return
     try {
       const stream = await navigator.mediaDevices.getUserMedia(
         kind === 'voice'
@@ -832,14 +933,19 @@ export default function ChatScreen() {
                     {!m.deleted && m.attachment_type === 'video_note' ? (
                       <div
                         onClick={e => {
+                          if (m.pending) return
+                          if (m.failed) { retryMessage(m); return }
                           const r = e.currentTarget.getBoundingClientRect()
                           setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
                           setMsgMenu(m)
                         }}
                         style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: m.mine ? 'flex-end' : 'flex-start' }}>
-                        <video src={resolveAssetUrl(m.attachment_url!)} controls playsInline
-                          onClick={e => e.stopPropagation()}
-                          style={{ width: 200, height: 200, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000' }} />
+                        <div style={{ position: 'relative', width: 200, height: 200 }}>
+                          <video src={resolveAssetUrl(m.attachment_url!)} controls playsInline
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: 200, height: 200, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000' }} />
+                          <MediaStatusOverlay pending={m.pending} failed={m.failed} round />
+                        </div>
                         {m.text && (
                           <div style={{
                             marginTop: 6, padding: '9px 13px', borderRadius: 16, fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word',
@@ -853,7 +959,8 @@ export default function ChatScreen() {
                     ) : (
                       <div
                         onClick={e => {
-                          if (m.deleted) return
+                          if (m.deleted || m.pending) return
+                          if (m.failed) { retryMessage(m); return }
                           const r = e.currentTarget.getBoundingClientRect()
                           setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
                           setMsgMenu(m)
@@ -870,37 +977,47 @@ export default function ChatScreen() {
                         {m.deleted ? 'Сообщение удалено' : (
                           <>
                             {m.attachment_type === 'image' && (
-                              <img src={resolveAssetUrl(m.attachment_url!)}
-                                style={{ display: 'block', maxWidth: 220, maxHeight: 280, borderRadius: 12, marginBottom: m.text ? 6 : 0 }} />
+                              <div style={{ position: 'relative', marginBottom: m.text ? 6 : 0 }}>
+                                <img src={resolveAssetUrl(m.attachment_url!)}
+                                  style={{ display: 'block', maxWidth: 220, maxHeight: 280, borderRadius: 12 }} />
+                                <MediaStatusOverlay pending={m.pending} failed={m.failed} />
+                              </div>
                             )}
                             {m.attachment_type === 'file' && (
-                              <div onClick={e => e.stopPropagation()}
+                              <div onClick={e => { if (!m.pending && !m.failed) e.stopPropagation() }}
                                 style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'default', marginBottom: m.text ? 8 : 0, minWidth: 160 }}>
                                 <div style={{
-                                  width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                                  position: 'relative', width: 36, height: 36, borderRadius: 8, flexShrink: 0,
                                   background: m.mine ? 'rgba(255,255,255,0.2)' : '#FFF3EE',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 }}>
                                   {iconFile(m.mine ? 'white' : 'var(--orange)')}
+                                  <MediaStatusOverlay pending={m.pending} failed={m.failed} />
                                 </div>
                                 <div style={{ minWidth: 0, flex: 1 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {m.attachment_name || 'Файл'}
                                   </div>
-                                  {m.attachment_size != null && (
-                                    <div style={{ fontSize: 11, opacity: 0.75 }}>{formatBytes(m.attachment_size)}</div>
-                                  )}
+                                  <div style={{ fontSize: 11, opacity: 0.75 }}>
+                                    {m.pending ? 'Отправка...' : m.failed ? 'Не отправлено · нажмите, чтобы повторить' : (m.attachment_size != null ? formatBytes(m.attachment_size) : null)}
+                                  </div>
                                 </div>
-                                <a href={resolveAssetUrl(m.attachment_url!)} target="_blank" rel="noreferrer" download={m.attachment_name || true}
-                                  onClick={e => e.stopPropagation()} style={{ flexShrink: 0, display: 'flex' }}>
-                                  {iconDownload(m.mine ? 'white' : '#999')}
-                                </a>
+                                {!m.pending && !m.failed && (
+                                  <a href={resolveAssetUrl(m.attachment_url!)} target="_blank" rel="noreferrer" download={m.attachment_name || true}
+                                    onClick={e => e.stopPropagation()} style={{ flexShrink: 0, display: 'flex' }}>
+                                    {iconDownload(m.mine ? 'white' : '#999')}
+                                  </a>
+                                )}
                               </div>
                             )}
                             {m.attachment_type === 'voice' && (
-                              <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: m.text ? 6 : 0 }}>
+                              <div onClick={e => { if (!m.pending && !m.failed) e.stopPropagation() }} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: m.text ? 6 : 0 }}>
                                 <audio controls src={resolveAssetUrl(m.attachment_url!)} style={{ height: 36, maxWidth: 220 }} />
-                                {m.attachment_duration != null && (
+                                {m.pending ? (
+                                  <PendingSpinner color={m.mine ? 'white' : '#AAA'} />
+                                ) : m.failed ? (
+                                  <FailedBadge />
+                                ) : m.attachment_duration != null && (
                                   <span style={{ fontSize: 11, opacity: 0.75, flexShrink: 0 }}>{formatDuration(m.attachment_duration)}</span>
                                 )}
                               </div>
@@ -915,8 +1032,15 @@ export default function ChatScreen() {
                       </div>
                     )}
                     <span style={{ fontSize: 10, color: '#AAA', marginTop: 2, marginRight: m.mine ? 4 : 0, marginLeft: m.mine ? 0 : 4, display: 'flex', alignItems: 'center', gap: 3 }}>
-                      {messageTime(m.created_at)}{m.edited && !m.deleted ? ' · изменено' : ''}
-                      {m.mine && !m.deleted && <ReadTicks read={m.read} />}
+                      {m.failed ? 'не отправлено' : messageTime(m.created_at)}{m.edited && !m.deleted && !m.pending && !m.failed ? ' · изменено' : ''}
+                      {m.mine && !m.deleted && (
+                        m.pending ? <PendingSpinner /> : m.failed ? (
+                          <>
+                            <span onClick={e => { e.stopPropagation(); retryMessage(m) }} style={{ cursor: 'pointer', display: 'flex' }}><FailedBadge /></span>
+                            <span onClick={e => { e.stopPropagation(); removeFailedMessage(m) }} style={{ cursor: 'pointer', color: '#FF3B30', fontWeight: 700, padding: '0 2px' }}>✕</span>
+                          </>
+                        ) : <ReadTicks read={m.read} />
+                      )}
                     </span>
                   </div>
                 </div>
@@ -962,7 +1086,7 @@ export default function ChatScreen() {
           ) : (
             <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 8, alignItems: 'flex-end', position: 'relative' }}>
               {editingId == null && (
-                <button onClick={() => setAttachMenuOpen(v => !v)} disabled={uploading}
+                <button onClick={() => setAttachMenuOpen(v => !v)}
                   style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#999' }}>
                   <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                 </button>
@@ -1002,11 +1126,11 @@ export default function ChatScreen() {
                 </button>
               ) : (
                 <>
-                  <button onClick={() => startRecording('video_note')} disabled={uploading}
+                  <button onClick={() => startRecording('video_note')}
                     style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                   </button>
-                  <button onClick={() => startRecording('voice')} disabled={uploading}
+                  <button onClick={() => startRecording('voice')}
                     style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                   </button>

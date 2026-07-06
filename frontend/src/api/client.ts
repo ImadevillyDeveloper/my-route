@@ -5,8 +5,10 @@ import axios from 'axios';
 export const API_ORIGIN = import.meta.env.VITE_API_URL || 'http://localhost:8977';
 
 // Uploaded-file URLs are either backend-relative ("/uploads/x.jpg") or, when
-// storage is Supabase, already absolute — don't double-prefix those.
-export const resolveAssetUrl = (url: string) => (url.startsWith('http') ? url : `${API_ORIGIN}${url}`);
+// storage is Supabase, already absolute — don't double-prefix those. Local
+// object-URL previews (unsent attachments) are passed through unchanged too.
+export const resolveAssetUrl = (url: string) =>
+  (url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')) ? url : `${API_ORIGIN}${url}`;
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
