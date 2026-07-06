@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   getChatConversations, getChatMessages, postChatMessage, getChatRouteMembers, setChatConversationState,
   resolveAssetUrl, editChatMessage, deleteChatMessage, getChatGroup, uploadChatGroupAvatar,
@@ -447,7 +448,8 @@ export default function ChatScreen() {
   const [videoFacing, setVideoFacing] = useState<'user' | 'environment'>('user')
   const [flippingCamera, setFlippingCamera] = useState(false)
   const [recordingPaused, setRecordingPaused] = useState(false)
-  const videoPreviewRef = useRef<HTMLVideoElement>(null)
+  const [recordingMinimized, setRecordingMinimized] = useState(false)
+  const videoPreviewRef = useRef<HTMLVideoElement | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordStreamRef = useRef<MediaStream | null>(null)
@@ -822,6 +824,7 @@ export default function ChatScreen() {
       recordLastTickRef.current = Date.now()
       recordingPausedRef.current = false
       setRecordingPaused(false)
+      setRecordingMinimized(false)
       setRecordSeconds(0)
       setRecording({ kind })
       recordTimerRef.current = window.setInterval(() => {
@@ -848,6 +851,11 @@ export default function ChatScreen() {
       recordingPausedRef.current = false
       setRecordingPaused(false)
     }
+  }
+
+  const minimizeRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') togglePauseRecording()
+    setRecordingMinimized(true)
   }
 
   const flipCamera = async () => {
@@ -891,6 +899,7 @@ export default function ChatScreen() {
     setRecording(null)
     setRecordSeconds(0)
     setRecordingPaused(false)
+    setRecordingMinimized(false)
     if (!recorder || !kind) return
     if (!send) {
       recorder.onstop = null
@@ -1272,6 +1281,30 @@ export default function ChatScreen() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
             </div>
+          ) : recording?.kind === 'video_note' && recordingMinimized ? (
+            <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button onClick={() => stopRecording(false)}
+                style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: '#F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+              <div onClick={() => setRecordingMinimized(false)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, cursor: 'pointer' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--orange-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Видеосообщение{recordingPaused ? ' · на паузе' : ''}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {String(Math.floor(recordSeconds / 60)).padStart(1, '0')}:{String(recordSeconds % 60).padStart(2, '0')} · нажмите, чтобы продолжить
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => stopRecording(true)}
+                style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+            </div>
           ) : (
             <div style={{ padding: '10px 12px', paddingBottom: 'calc(10px + var(--nav-safe))', display: 'flex', gap: 8, alignItems: 'flex-end', position: 'relative' }}>
               {editingId == null && (
@@ -1335,14 +1368,23 @@ export default function ChatScreen() {
           )}
         </div>
 
-        {recording?.kind === 'video_note' && (
+        {recording?.kind === 'video_note' && !recordingMinimized && createPortal(
           <div style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
+            position: 'fixed', inset: 0, zIndex: 2000,
             background: 'rgba(12,12,14,0.6)', backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           }}>
+            <button onClick={minimizeRecording}
+              style={{
+                position: 'absolute', left: 16, top: 'calc(16px + env(safe-area-inset-top, 0px))',
+                width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(70,70,74,0.75)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+
             <div style={{ position: 'relative', width: 260, height: 260 }}>
-              <video ref={videoPreviewRef} autoPlay muted playsInline
+              <video ref={el => { videoPreviewRef.current = el; if (el) el.srcObject = videoPreviewStream }} autoPlay muted playsInline
                 style={{ width: 260, height: 260, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000', transform: videoFacing === 'user' ? 'scaleX(-1)' : 'none' }} />
               {flippingCamera && (
                 <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1380,15 +1422,15 @@ export default function ChatScreen() {
                     {String(Math.floor(recordSeconds / 60)).padStart(1, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
                   </span>
                   <button onClick={() => stopRecording(false)}
-                    style={{ background: 'none', border: 'none', color: '#7C8CFF', fontSize: 15, fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>
+                    style={{ background: 'none', border: 'none', color: 'var(--orange-light)', fontSize: 15, fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>
                     Отмена
                   </button>
                 </div>
                 <button onClick={() => stopRecording(true)}
                   style={{
-                    width: 56, height: 56, borderRadius: '50%', border: 'none', background: '#5B6EF5',
+                    width: 56, height: 56, borderRadius: '50%', border: 'none', background: 'var(--orange)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
-                    boxShadow: '0 4px 16px rgba(91,110,245,0.5)',
+                    boxShadow: '0 4px 16px rgba(255,102,0,0.5)',
                   }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
@@ -1396,7 +1438,8 @@ export default function ChatScreen() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {msgMenu && (
