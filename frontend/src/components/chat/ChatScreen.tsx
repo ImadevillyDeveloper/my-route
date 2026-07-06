@@ -344,6 +344,8 @@ const ICON_TRASH_WHITE = (
 const SWIPE_MAX = 88
 const SWIPE_THRESHOLD = 60
 const CLICK_SUPPRESS_THRESHOLD = 15  // ignore incidental jitter from a real mouse/trackpad click
+const LONG_PRESS_MS = 450
+const LONG_PRESS_MOVE_TOLERANCE = 10
 
 const SwipeableChatRow = ({ children, rightLabel, leftLabel, onSwipeRight, onSwipeLeft }: {
   children: React.ReactNode
@@ -473,6 +475,9 @@ export default function ChatScreen() {
     kind: 'image' | 'file' | 'voice' | 'video_note'
     opts?: { caption?: string; duration?: number; filename?: string }
   }>>(new Map())
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
+  const suppressMsgClickRef = useRef(false)
 
   const loadConversations = () => {
     getChatConversations().then(r => { setConversations(r.data); setLoadedList(true) }).catch(() => setLoadedList(true))
@@ -783,6 +788,62 @@ export default function ChatScreen() {
     if (m.localUrl) URL.revokeObjectURL(m.localUrl)
     pendingFilesRef.current.delete(m.id)
   }
+
+  // Long-press (touch/mouse-hold) or right-click opens the edit/delete menu —
+  // matching Telegram/WhatsApp, and avoiding the menu popping up unexpectedly
+  // from a plain tap that was meant to play/open the message's attachment.
+  const openMsgMenuAt = (m: ChatMessage, target: HTMLElement) => {
+    if (m.deleted || m.pending) return
+    if (m.failed) { retryMessage(m); return }
+    const r = target.getBoundingClientRect()
+    setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
+    setMsgMenu(m)
+  }
+
+  const msgLongPressHandlers = (m: ChatMessage) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      if (m.deleted || m.pending) return
+      longPressStartRef.current = { x: e.clientX, y: e.clientY }
+      const target = e.currentTarget
+      if (longPressTimerRef.current != null) clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = window.setTimeout(() => {
+        longPressTimerRef.current = null
+        suppressMsgClickRef.current = true
+        openMsgMenuAt(m, target)
+      }, LONG_PRESS_MS)
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+      const start = longPressStartRef.current
+      if (!start || longPressTimerRef.current == null) return
+      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > LONG_PRESS_MOVE_TOLERANCE) {
+        clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
+      }
+    },
+    onPointerUp: () => {
+      if (longPressTimerRef.current != null) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null }
+    },
+    onPointerCancel: () => {
+      if (longPressTimerRef.current != null) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null }
+    },
+    onPointerLeave: () => {
+      if (longPressTimerRef.current != null) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null }
+    },
+    onContextMenu: (e: React.MouseEvent<HTMLElement>) => {
+      e.preventDefault()
+      openMsgMenuAt(m, e.currentTarget)
+    },
+    onClickCapture: (e: React.MouseEvent) => {
+      if (suppressMsgClickRef.current) {
+        suppressMsgClickRef.current = false
+        e.stopPropagation()
+        e.preventDefault()
+      }
+    },
+    onClick: () => {
+      if (m.failed) retryMessage(m)
+    },
+  })
 
   const onImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -1172,14 +1233,8 @@ export default function ChatScreen() {
                     )}
                     {!m.deleted && m.attachment_type === 'video_note' ? (
                       <div
-                        onClick={e => {
-                          if (m.pending) return
-                          if (m.failed) { retryMessage(m); return }
-                          const r = e.currentTarget.getBoundingClientRect()
-                          setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
-                          setMsgMenu(m)
-                        }}
-                        style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: m.mine ? 'flex-end' : 'flex-start' }}>
+                        {...msgLongPressHandlers(m)}
+                        style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: m.mine ? 'flex-end' : 'flex-start', touchAction: 'pan-y' }}>
                         <VideoNoteMessagePlayer src={resolveAssetUrl(m.attachment_url!)} pending={m.pending} failed={m.failed} />
                         {m.text && (
                           <div style={{
@@ -1193,13 +1248,7 @@ export default function ChatScreen() {
                       </div>
                     ) : (
                       <div
-                        onClick={e => {
-                          if (m.deleted || m.pending) return
-                          if (m.failed) { retryMessage(m); return }
-                          const r = e.currentTarget.getBoundingClientRect()
-                          setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
-                          setMsgMenu(m)
-                        }}
+                        {...(m.deleted ? {} : msgLongPressHandlers(m))}
                         style={{
                           padding: m.attachment_type === 'image' && !m.deleted ? 4 : '9px 13px', borderRadius: 16,
                           background: m.deleted ? (m.mine ? 'rgba(255,255,255,0.25)' : '#EFEFEF') : (m.mine ? 'var(--orange)' : 'white'),
@@ -1208,6 +1257,7 @@ export default function ChatScreen() {
                           fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word',
                           fontStyle: m.deleted ? 'italic' : 'normal',
                           cursor: m.deleted ? 'default' : 'pointer',
+                          touchAction: 'pan-y',
                         }}>
                         {m.deleted ? 'Сообщение удалено' : (
                           <>
@@ -1478,8 +1528,8 @@ export default function ChatScreen() {
           document.body
         )}
 
-        {msgMenu && (
-          <div onClick={() => setMsgMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 999 }}>
+        {msgMenu && createPortal(
+          <div onClick={() => setMsgMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 2000 }}>
             <div onClick={e => e.stopPropagation()}
               className="chat-ctx-menu"
               style={{
@@ -1511,7 +1561,8 @@ export default function ChatScreen() {
                 </div>
               )}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
         {confirmModal}
       </div>
