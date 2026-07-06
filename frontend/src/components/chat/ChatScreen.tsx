@@ -139,6 +139,138 @@ const MediaStatusOverlay = ({ pending, failed, round }: { pending?: boolean; fai
   )
 }
 
+const useMediaPlayback = (mediaRef: React.RefObject<HTMLMediaElement>, knownDuration?: number | null) => {
+  const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(knownDuration ?? 0)
+
+  useEffect(() => {
+    const el = mediaRef.current
+    if (!el) return
+    const onTime = () => { setCurrentTime(el.currentTime); if (el.duration && isFinite(el.duration)) setProgress(el.currentTime / el.duration) }
+    const onLoaded = () => { if (el.duration && isFinite(el.duration)) setDuration(el.duration) }
+    const onPlay = () => setPlaying(true)
+    const onPause = () => setPlaying(false)
+    const onEnded = () => { setPlaying(false); setProgress(0); setCurrentTime(0) }
+    el.addEventListener('timeupdate', onTime)
+    el.addEventListener('loadedmetadata', onLoaded)
+    el.addEventListener('durationchange', onLoaded)
+    el.addEventListener('play', onPlay)
+    el.addEventListener('pause', onPause)
+    el.addEventListener('ended', onEnded)
+    return () => {
+      el.removeEventListener('timeupdate', onTime)
+      el.removeEventListener('loadedmetadata', onLoaded)
+      el.removeEventListener('durationchange', onLoaded)
+      el.removeEventListener('play', onPlay)
+      el.removeEventListener('pause', onPause)
+      el.removeEventListener('ended', onEnded)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return { playing, progress, currentTime, duration }
+}
+
+const iconPlay = (color: string) => <svg width="13" height="13" viewBox="0 0 24 24" fill={color}><path d="M6 4l14 8-14 8z" /></svg>
+const iconPause = (color: string) => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill={color}><rect x="5" y="4" width="5" height="16" rx="1" /><rect x="14" y="4" width="5" height="16" rx="1" /></svg>
+)
+
+const VoiceMessagePlayer = ({ src, mine, knownDuration }: { src: string; mine: boolean; knownDuration?: number | null }) => {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+  const { playing, progress, currentTime, duration } = useMediaPlayback(audioRef as React.RefObject<HTMLMediaElement>, knownDuration)
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const el = audioRef.current
+    if (!el) return
+    if (playing) el.pause(); else el.play().catch(() => {})
+  }
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    const el = audioRef.current
+    const bar = barRef.current
+    if (!el || !bar || !duration) return
+    const rect = bar.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+    el.currentTime = ratio * duration
+  }
+
+  const accent = mine ? 'white' : 'var(--orange)'
+  const trackBg = mine ? 'rgba(255,255,255,0.35)' : '#E5E5E5'
+  const shownSeconds = currentTime > 0 ? currentTime : duration
+
+  return (
+    <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 190 }}>
+      <audio ref={audioRef} src={src} preload="metadata" style={{ display: 'none' }} />
+      <button onClick={togglePlay}
+        style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: mine ? 'rgba(255,255,255,0.22)' : '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+        {playing ? iconPause(accent) : iconPlay(accent)}
+      </button>
+      <div ref={barRef} onClick={seek} style={{ position: 'relative', flex: 1, minWidth: 60, height: 14, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+        <div style={{ height: 3, borderRadius: 2, background: trackBg, width: '100%', position: 'relative' }}>
+          <div style={{ position: 'absolute', inset: 0, width: `${progress * 100}%`, background: accent, borderRadius: 2 }} />
+        </div>
+        <div style={{ position: 'absolute', left: `calc(${progress * 100}% - 5px)`, width: 10, height: 10, borderRadius: '50%', background: accent, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+      </div>
+      <span style={{ fontSize: 11, opacity: 0.75, flexShrink: 0, minWidth: 26, textAlign: 'right' }}>{formatDuration(Math.round(shownSeconds))}</span>
+    </div>
+  )
+}
+
+const VideoNoteMessagePlayer = ({ src, pending, failed }: { src: string; pending?: boolean; failed?: boolean }) => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const { playing, progress, currentTime, duration } = useMediaPlayback(videoRef as React.RefObject<HTMLMediaElement>)
+  const SIZE = 200
+  const R = 96
+  const C = 2 * Math.PI * R
+  const dash = C * Math.min(1, Math.max(0, progress))
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (pending || failed) return
+    const el = videoRef.current
+    if (!el) return
+    if (playing) el.pause(); else el.play().catch(() => {})
+  }
+
+  return (
+    <div style={{ position: 'relative', width: SIZE, height: SIZE }}>
+      <video ref={videoRef} src={src} playsInline onClick={toggle}
+        style={{ width: SIZE, height: SIZE, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }} />
+      {!pending && !failed && (
+        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
+          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="3" />
+          {progress > 0 && (
+            <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="white" strokeWidth="3"
+              strokeDasharray={`${dash} ${C - dash}`} strokeLinecap="round" />
+          )}
+        </svg>
+      )}
+      {!playing && !pending && !failed && (
+        <div onClick={toggle} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'rgba(0,0,0,0.15)', borderRadius: '50%' }}>
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
+        </div>
+      )}
+      <MediaStatusOverlay pending={pending} failed={failed} round />
+      {!pending && !failed && (
+        <>
+          <span style={{ position: 'absolute', left: 10, bottom: 10, background: 'rgba(0,0,0,0.55)', color: 'white', fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 12, pointerEvents: 'none' }}>
+            {formatDuration(Math.round(currentTime))}
+          </span>
+          <span style={{ position: 'absolute', right: 10, bottom: 10, background: 'rgba(0,0,0,0.55)', color: 'white', fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 12, pointerEvents: 'none' }}>
+            {formatDuration(Math.round(duration))}
+          </span>
+        </>
+      )}
+    </div>
+  )
+}
+
 const dayLabel = (iso: string) => {
   const d = new Date(iso)
   const now = new Date()
@@ -940,12 +1072,7 @@ export default function ChatScreen() {
                           setMsgMenu(m)
                         }}
                         style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: m.mine ? 'flex-end' : 'flex-start' }}>
-                        <div style={{ position: 'relative', width: 200, height: 200 }}>
-                          <video src={resolveAssetUrl(m.attachment_url!)} controls playsInline
-                            onClick={e => e.stopPropagation()}
-                            style={{ width: 200, height: 200, borderRadius: '50%', objectFit: 'cover', display: 'block', background: '#000' }} />
-                          <MediaStatusOverlay pending={m.pending} failed={m.failed} round />
-                        </div>
+                        <VideoNoteMessagePlayer src={resolveAssetUrl(m.attachment_url!)} pending={m.pending} failed={m.failed} />
                         {m.text && (
                           <div style={{
                             marginTop: 6, padding: '9px 13px', borderRadius: 16, fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word',
@@ -1011,14 +1138,17 @@ export default function ChatScreen() {
                               </div>
                             )}
                             {m.attachment_type === 'voice' && (
-                              <div onClick={e => { if (!m.pending && !m.failed) e.stopPropagation() }} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: m.text ? 6 : 0 }}>
-                                <audio controls src={resolveAssetUrl(m.attachment_url!)} style={{ height: 36, maxWidth: 220 }} />
-                                {m.pending ? (
-                                  <PendingSpinner color={m.mine ? 'white' : '#AAA'} />
-                                ) : m.failed ? (
-                                  <FailedBadge />
-                                ) : m.attachment_duration != null && (
-                                  <span style={{ fontSize: 11, opacity: 0.75, flexShrink: 0 }}>{formatDuration(m.attachment_duration)}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: m.text ? 6 : 0 }}>
+                                {m.pending || m.failed ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 150 }}>
+                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: m.mine ? 'rgba(255,255,255,0.22)' : '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      {iconPlay(m.mine ? 'white' : 'var(--orange)')}
+                                    </div>
+                                    <span style={{ fontSize: 12, opacity: 0.85 }}>{m.pending ? 'Отправка...' : 'Не отправлено'}</span>
+                                    {m.pending ? <PendingSpinner color={m.mine ? 'white' : '#AAA'} /> : <FailedBadge />}
+                                  </div>
+                                ) : (
+                                  <VoiceMessagePlayer src={resolveAssetUrl(m.attachment_url!)} mine={m.mine} knownDuration={m.attachment_duration} />
                                 )}
                               </div>
                             )}
