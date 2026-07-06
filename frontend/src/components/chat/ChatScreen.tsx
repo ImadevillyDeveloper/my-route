@@ -250,6 +250,7 @@ export default function ChatScreen() {
   const [titleSaving, setTitleSaving] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [msgMenu, setMsgMenu] = useState<ChatMessage | null>(null)
+  const [msgMenuPos, setMsgMenuPos] = useState({ x: 0, y: 0 })
   const [confirm, setConfirm] = useState<{ text: React.ReactNode; confirmLabel: string; danger: boolean; onConfirm: () => void } | null>(null)
   const [contacts, setContacts] = useState<RouteMember[]>([])
   const activeKeyRef = useRef<string | null>(null)
@@ -681,7 +682,12 @@ export default function ChatScreen() {
                       </span>
                     )}
                     <div
-                      onClick={() => { if (!m.deleted) setMsgMenu(m) }}
+                      onClick={e => {
+                        if (m.deleted) return
+                        const r = e.currentTarget.getBoundingClientRect()
+                        setMsgMenuPos({ x: m.mine ? r.right : r.left, y: r.bottom })
+                        setMsgMenu(m)
+                      }}
                       style={{
                         padding: '9px 13px', borderRadius: 16,
                         background: m.deleted ? (m.mine ? 'rgba(255,255,255,0.25)' : '#EFEFEF') : (m.mine ? 'var(--orange)' : 'white'),
@@ -733,27 +739,35 @@ export default function ChatScreen() {
         </div>
 
         {msgMenu && (
-          <div onClick={() => setMsgMenu(null)}
-            className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={() => setMsgMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 999 }}>
             <div onClick={e => e.stopPropagation()}
-              style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, paddingBottom: 'var(--nav-safe)' }}>
+              className="chat-ctx-menu"
+              style={{
+                position: 'fixed',
+                top: Math.min(msgMenuPos.y + 4, window.innerHeight - 160),
+                left: msgMenu.mine
+                  ? Math.min(Math.max(msgMenuPos.x - 200, 8), window.innerWidth - 208)
+                  : Math.min(Math.max(msgMenuPos.x, 8), window.innerWidth - 208),
+                width: 200, background: 'white', borderRadius: 12,
+                boxShadow: '0 6px 28px rgba(0,0,0,0.2)', border: '1px solid #EEE', overflow: 'hidden',
+              }}>
               {msgMenu.mine && (
                 <div onClick={() => startEdit(msgMenu)}
-                  style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', borderBottom: '1px solid #F5F5F5' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>Редактировать</span>
+                  style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: '1px solid #F5F5F5' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>Редактировать</span>
                 </div>
               )}
               <div onClick={() => removeMessage(msgMenu, false)}
-                style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', borderBottom: msgMenu.mine ? '1px solid #F5F5F5' : 'none' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                <span style={{ fontSize: 15, fontWeight: 600 }}>Удалить у меня</span>
+                style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: msgMenu.mine ? '1px solid #F5F5F5' : 'none' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>Удалить у меня</span>
               </div>
               {msgMenu.mine && (
                 <div onClick={() => removeMessage(msgMenu, true)}
-                  style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: '#FF3B30' }}>Удалить у всех</span>
+                  style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#FF3B30' }}>Удалить у всех</span>
                 </div>
               )}
             </div>
