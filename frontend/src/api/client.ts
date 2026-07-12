@@ -26,7 +26,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // A 401 from a login endpoint means "wrong credentials", not "session expired" —
+    // don't wipe storage / redirect, let the calling screen show its own error.
+    const isLoginCall = (error.config?.url ?? '').includes('/auth/login/')
+    if (error.response?.status === 401 && !isLoginCall) {
       localStorage.removeItem('token');
       localStorage.removeItem('auth');
       window.location.href = '/';
@@ -46,6 +49,25 @@ export const loginEntrepreneur = (phone: string) =>
 
 export const loginGosuslugi = () =>
   api.post('/auth/login/gosuslugi');
+
+export const loginAdmin = (password: string) =>
+  api.post('/auth/login/admin', { password });
+
+// Admin
+export interface AdminEntrepreneur {
+  id: number
+  full_name: string
+  phone: string | null
+  avatar_url: string | null
+  created_at: string
+  vehicles_count: number
+  drivers_count: number
+}
+export const getAdminEntrepreneurs = () => api.get<AdminEntrepreneur[]>('/admin/entrepreneurs')
+export const createAdminEntrepreneur = (full_name: string, phone: string) =>
+  api.post<AdminEntrepreneur>('/admin/entrepreneurs', { full_name, phone })
+export const deleteAdminEntrepreneur = (id: number) =>
+  api.delete(`/admin/entrepreneurs/${id}`)
 
 // Users
 export const getMe = () => api.get('/users/me');
@@ -75,6 +97,8 @@ export const requestRecommendation = (direction: string) =>
 export const getKnownRoutes = () => api.get<string[]>('/tracking/routes')
 export const getNearestStop = (routeNumber: string, lat: number, lng: number) =>
   api.get('/tracking/nearest-stop', { params: { route_number: routeNumber, lat, lng } })
+export const postGpsPosition = (lat: number, lng: number, speed: number) =>
+  api.post('/tracking/gps', { lat, lng, speed })
 
 // Chat
 export const getChatConversations = () => api.get('/chat/conversations')

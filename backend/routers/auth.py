@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
-from ..auth import create_access_token, get_current_user
+from ..auth import create_access_token, get_current_user, pwd_context
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +45,20 @@ def login_entrepreneur(request: schemas.EntrepreneurLoginRequest, db: Session = 
     return schemas.TokenResponse(
         access_token=token,
         role="entrepreneur",
+        user_id=user.id,
+        full_name=user.full_name,
+    )
+
+
+@router.post("/login/admin", response_model=schemas.TokenResponse)
+def login_admin(request: schemas.AdminLoginRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.role == models.UserRole.admin).first()
+    if not user or not user.hashed_password or not pwd_context.verify(request.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Неверный пароль")
+    token = create_access_token({"sub": str(user.id), "role": "admin"})
+    return schemas.TokenResponse(
+        access_token=token,
+        role="admin",
         user_id=user.id,
         full_name=user.full_name,
     )

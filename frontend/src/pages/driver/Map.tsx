@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint, getNearestStop } from '../../api/client'
+import { getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint, getNearestStop, postGpsPosition } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 
 declare global { interface Window { ymaps: any } }
@@ -133,6 +133,9 @@ export default function DriverMap() {
       const hintsOn = u.hints_enabled !== false
       hintsEnabledRef.current = hintsOn
       setHintsEnabled(hintsOn)
+      const voiceEnabled = u.voice_enabled !== false
+      voiceOnRef.current = voiceEnabled
+      setVoiceOn(voiceEnabled)
       setUserLoaded(true)
     }).catch(() => { setUserLoaded(true) })
   }, [])
@@ -308,6 +311,20 @@ export default function DriverMap() {
     )
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
+
+  // ── Отправка своего GPS на сервер во время смены ─────────────────
+  // Используется предпринимателем как запасной источник местоположения
+  // ТС, если по нему нет данных с Навитранса.
+  useEffect(() => {
+    if (!shiftStarted) return
+    const sendGps = () => {
+      const p = positionRef.current
+      if (p) postGpsPosition(p.lat, p.lng, p.speed).catch(() => {})
+    }
+    sendGps()
+    const t = setInterval(sendGps, 10000)
+    return () => clearInterval(t)
+  }, [shiftStarted])
 
   // ── Загрузка и поллинг конкурентов + подсказок (10 с) ───────────
   const loadAndFetch = useCallback(async () => {
@@ -693,7 +710,7 @@ export default function DriverMap() {
         <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: '4px 10px', color: 'white', fontWeight: 800, fontSize: 15 }}>
           №{driverRoute}
         </div>
-        <button onClick={() => setVoiceOn(v => { voiceOnRef.current = !v; return !v })}
+        <button onClick={() => setVoiceOn(v => { const next = !v; voiceOnRef.current = next; updateMe({ voice_enabled: next }).catch(() => {}); return next })}
           style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontSize: 16 }}>
           {voiceOn ? '🔊' : '🔇'}
         </button>

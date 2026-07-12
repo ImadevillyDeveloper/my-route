@@ -32,6 +32,9 @@ import EntReportDetail from './pages/entrepreneur/ReportDetail'
 import EntSettings   from './pages/entrepreneur/Settings'
 import EntChat       from './pages/entrepreneur/Chat'
 
+// Admin
+import AdminPanel from './pages/admin/AdminPanel'
+
 function ProtectedDriver({ children }: { children: React.ReactNode }) {
   const { token, role } = useAuthStore()
   if (!token) return <Navigate to="/" replace />
@@ -57,6 +60,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/admin" element={<AdminPanel />} />
 
         <Route path="/driver" element={<ProtectedDriver><DriverLayout /></ProtectedDriver>}>
           <Route index element={<Navigate to="map" replace />} />

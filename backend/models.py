@@ -31,6 +31,7 @@ class UTCDateTime(TypeDecorator):
 class UserRole(str, enum.Enum):
     driver = "driver"
     entrepreneur = "entrepreneur"
+    admin = "admin"
 
 
 class VehicleStatus(str, enum.Enum):
@@ -68,6 +69,11 @@ class User(Base):
     active_shift_start = Column(String, nullable=True)  # ISO datetime начала активной смены
     active_direction   = Column(String, nullable=True)  # "forward" | "back"
     hints_enabled      = Column(Boolean, default=True, nullable=True)  # показывать AI-подсказки на карте
+    voice_enabled      = Column(Boolean, default=True, nullable=True)  # озвучивать подсказки голосом
+    gps_lat            = Column(Float, nullable=True)   # последняя GPS-позиция водителя (fallback, если нет данных Навитранса)
+    gps_lng            = Column(Float, nullable=True)
+    gps_speed          = Column(Float, nullable=True)
+    gps_updated_at     = Column(UTCDateTime, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(UTCDateTime, server_default=func.now())
     last_seen_at = Column(UTCDateTime, nullable=True)  # обновляется при каждом запросе (throttled)

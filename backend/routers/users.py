@@ -48,6 +48,8 @@ def update_me(
         current_user.active_direction = update.active_direction
     if update.hints_enabled is not None:
         current_user.hints_enabled = update.hints_enabled
+    if update.voice_enabled is not None:
+        current_user.voice_enabled = update.voice_enabled
     db.commit()
     db.refresh(current_user)
     return current_user

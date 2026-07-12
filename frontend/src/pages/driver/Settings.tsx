@@ -41,6 +41,7 @@ export default function DriverSettings() {
         setRivals(saved)
       } catch {}
       setHintsOn(r.data.hints_enabled !== false)
+      setVoiceOn(r.data.voice_enabled !== false)
       setUserLoaded(true)
     }).catch(() => { setUserLoaded(true) })
 
@@ -103,6 +104,14 @@ export default function DriverSettings() {
     setHintsOn(prev => {
       const next = !prev
       updateMe({ hints_enabled: next }).catch(() => {})
+      return next
+    })
+  }
+
+  const toggleVoice = () => {
+    setVoiceOn(prev => {
+      const next = !prev
+      updateMe({ voice_enabled: next }).catch(() => {})
       return next
     })
   }
@@ -185,7 +194,7 @@ export default function DriverSettings() {
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
             </div>
             <span className="row-label">Голосовой помощник</span>
-            <div className={`toggle ${voiceOn ? 'toggle-on' : 'toggle-off'}`} onClick={() => setVoiceOn(v => !v)}>
+            <div className={`toggle ${voiceOn ? 'toggle-on' : 'toggle-off'}`} onClick={toggleVoice}>
               <div className="toggle-thumb" />
             </div>
           </div>

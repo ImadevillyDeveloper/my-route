@@ -13,7 +13,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "marshrut-secret-key-2025-change-in-pr
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 PRESENCE_UPDATE_INTERVAL = timedelta(seconds=20)  # throttle last_seen_at writes
@@ -71,4 +71,10 @@ def get_current_driver(current_user: models.User = Depends(get_current_user)) ->
 def get_current_entrepreneur(current_user: models.User = Depends(get_current_user)) -> models.User:
     if current_user.role != models.UserRole.entrepreneur:
         raise HTTPException(status_code=403, detail="Entrepreneur access required")
+    return current_user
+
+
+def get_current_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
+    if current_user.role != models.UserRole.admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     return current_user

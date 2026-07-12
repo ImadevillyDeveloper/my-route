@@ -4,6 +4,7 @@ import random
 import re
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -379,6 +380,26 @@ def get_position(current_user: models.User = Depends(get_current_user)):
     return schemas.PositionOut(lat=54.9894, lng=73.3780, speed=34.0)
 
 
+GPS_STALE_S = 90  # GPS-позиция считается устаревшей и не показывается через этот интервал
+
+
+@router.post("/gps")
+def post_gps(
+    body: schemas.GpsUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Водитель периодически шлёт свою GPS-позицию — используется как запасной
+    источник местоположения ТС на карте предпринимателя, если по этому ТС
+    нет данных с Навитранса."""
+    current_user.gps_lat = body.lat
+    current_user.gps_lng = body.lng
+    current_user.gps_speed = body.speed
+    current_user.gps_updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
 def _route_sort_key(route: str) -> tuple:
     m = re.match(r"(\d+)(.*)", route)
     if m:
@@ -548,6 +569,55 @@ def get_rivals_live(
             ))
         except Exception:
             continue
+
+    # ── GPS-фолбэк: водитель начал смену на ТС этого маршрута, но
+    # свежих данных с Навитранса по его гос. номеру нет ─────────────
+    navitrans_plates: dict[str, set[str]] = {}
+    for r in result:
+        if r.route_number:
+            navitrans_plates.setdefault(r.route_number, set()).add((r.plate_number or "").strip())
+
+    gps_drivers = db.query(models.User).filter(
+        models.User.role == models.UserRole.driver,
+        models.User.route_number.in_(route_list),
+        models.User.active_shift_start.isnot(None),
+        models.User.vehicle_plate.isnot(None),
+        models.User.gps_updated_at.isnot(None),
+    ).all()
+
+    now = datetime.now(timezone.utc)
+    for d in gps_drivers:
+        route_num = (d.route_number or "").strip()
+        plate = (d.vehicle_plate or "").strip()
+        if not route_num or not plate:
+            continue
+        if plate in navitrans_plates.get(route_num, set()):
+            continue  # свежие данные с Навитранса уже есть — GPS не нужен
+        if (now - d.gps_updated_at).total_seconds() > GPS_STALE_S:
+            continue  # GPS слишком старый — не показываем "призрак"
+
+        route = db.query(models.Route).filter(models.Route.number == route_num).first()
+        if route:
+            direction = (
+                f"{route.end_point} → {route.start_point}" if d.active_direction == "back"
+                else f"{route.start_point} → {route.end_point}"
+            )
+        else:
+            direction = f"Маршрут {route_num}"
+
+        result.append(schemas.RivalOut(
+            id=len(result) + 1,
+            unit_id=f"driver-{d.id}",
+            lat=d.gps_lat,
+            lng=d.gps_lng,
+            speed=d.gps_speed or 0.0,
+            direction=direction,
+            route_number=route_num,
+            plate_number=d.vehicle_plate,
+            model=None,
+            status="active",
+            source="gps",
+        ))
 
     return result
 

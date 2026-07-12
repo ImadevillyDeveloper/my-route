@@ -66,6 +66,10 @@ class EntrepreneurLoginRequest(BaseModel):
     phone: str
 
 
+class AdminLoginRequest(BaseModel):
+    password: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -88,6 +92,7 @@ class UserOut(BaseModel):
     active_shift_start: Optional[str] = None
     active_direction: Optional[str] = None
     hints_enabled: Optional[bool] = True
+    voice_enabled: Optional[bool] = True
 
     class Config:
         from_attributes = True
@@ -101,6 +106,23 @@ class UserUpdate(BaseModel):
     active_shift_start: Optional[str] = None
     active_direction: Optional[str] = None
     hints_enabled: Optional[bool] = None
+    voice_enabled: Optional[bool] = None
+
+
+# Admin
+class EntrepreneurAdminOut(BaseModel):
+    id: int
+    full_name: str
+    phone: Optional[str] = None
+    avatar_url: Optional[str] = None
+    created_at: datetime
+    vehicles_count: int = 0
+    drivers_count: int = 0
+
+
+class EntrepreneurAdminCreate(BaseModel):
+    full_name: str
+    phone: str
 
 
 # Tracking
@@ -121,6 +143,13 @@ class RivalOut(BaseModel):
     plate_number: Optional[str] = None
     model: Optional[str] = None
     status: Optional[str] = None
+    source: Optional[str] = None  # "gps" — позиция получена с телефона водителя (нет данных Навитранса)
+
+
+class GpsUpdate(BaseModel):
+    lat: float
+    lng: float
+    speed: float = 0.0
 
 
 class HintRival(BaseModel):

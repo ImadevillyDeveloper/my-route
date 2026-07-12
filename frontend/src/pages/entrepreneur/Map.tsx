@@ -125,6 +125,7 @@ interface NavVehicle {
   plate_number?: string
   model?: string
   status?: string
+  source?: string  // "gps" — местоположение по GPS водителя, нет данных Навитранса
 }
 
 export default function EntMap() {
@@ -243,16 +244,18 @@ export default function EntMap() {
       uniqueDirsNow.forEach((d, i) => { dirToPreset[d] = DIR_PALETTE[i] ?? 'islands#greyCircleDotIcon' })
 
       navVehicles.forEach(v => {
-        const preset = dirToPreset[v.direction || ''] ?? 'islands#greyCircleDotIcon'
+        const isGps = v.source === 'gps'
+        const preset = isGps ? 'islands#greyStretchyIcon' : (dirToPreset[v.direction || ''] ?? 'islands#greyCircleDotIcon')
         const balloon = [
           `<b>Маршрут №${v.route_number ?? '—'}</b>`,
           v.direction ? `<span style="color:#888">${v.direction}</span>` : '',
           v.plate_number ? `Гос. номер: <b>${v.plate_number}</b>` : '',
           `Скорость: <b>${v.speed.toFixed(0)} км/ч</b>`,
+          isGps ? `<span style="color:#FF6600">📡 Нет данных Навитранс — GPS водителя</span>` : '',
         ].filter(Boolean).join('<br/>')
         const m = new window.ymaps.Placemark(
           [v.lat, v.lng],
-          { balloonContent: balloon, hintContent: v.plate_number || '?' },
+          { balloonContent: balloon, hintContent: v.plate_number || '?', iconContent: isGps ? (v.plate_number || '') : undefined },
           { preset }
         )
         m.events.add('click', () => setSelectedNav(v))
@@ -422,7 +425,8 @@ export default function EntMap() {
                     const plate      = v.plate_number || `ТС ${i + 1}`
                     const driver     = findLocalDriver(v.plate_number)
                     const driverName = driver ? abbreviateName(driver.full_name) : null
-                    const dot        = getDotColor(v.direction)
+                    const isGps      = v.source === 'gps'
+                    const dot        = isGps ? '#999999' : getDotColor(v.direction)
                     return (
                       <div key={`${v.unit_id ?? ''}-${i}`}
                         onClick={() => { setSelectedNav(v); setShowPanel(false) }}
@@ -440,8 +444,14 @@ export default function EntMap() {
                               ? <span style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 600 }}>{driverName}</span>
                               : <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>—</span>
                             }
+                            {isGps && (
+                              <span style={{ fontSize: 10, fontWeight: 800, color: '#888', background: '#EFEFEF', borderRadius: 6, padding: '2px 6px', letterSpacing: 0.3 }}>GPS</span>
+                            )}
                           </div>
-                          {v.model && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{v.model} · {v.speed.toFixed(0)} км/ч</div>}
+                          {isGps
+                            ? <div style={{ fontSize: 12, color: '#FF6600', marginTop: 2 }}>📡 нет данных Навитранс · {v.speed.toFixed(0)} км/ч</div>
+                            : v.model && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{v.model} · {v.speed.toFixed(0)} км/ч</div>
+                          }
                         </div>
 
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CCCCCC" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6"/></svg>
@@ -497,7 +507,8 @@ export default function EntMap() {
         const driverName = driver ? abbreviateName(driver.full_name) : null
         const localVeh   = findLocalVehicle(v.plate_number)
         const nearestStop = getNearestStop(v.lat, v.lng, v.route_number ?? favoriteRoute)
-        const dot        = getDotColor(v.direction)
+        const isGps      = v.source === 'gps'
+        const dot        = isGps ? '#999999' : getDotColor(v.direction)
 
         return (
           <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
@@ -521,6 +532,15 @@ export default function EntMap() {
                     {v.model && <div style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 500 }}>{v.model}</div>}
                   </div>
                 </div>
+
+                {isGps && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', marginBottom: 16, background: '#FFF3EE', borderRadius: 12 }}>
+                    <span style={{ fontSize: 16 }}>📡</span>
+                    <span style={{ fontSize: 13, color: 'var(--orange)', fontWeight: 600, lineHeight: 1.4 }}>
+                      Нет данных с Навитранса по этому ТС — показано местоположение по GPS водителя
+                    </span>
+                  </div>
+                )}
 
                 {/* Info rows */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0, background: '#F8F8F8', borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>

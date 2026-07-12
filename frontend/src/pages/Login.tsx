@@ -98,10 +98,10 @@ export default function Login() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#F2F2F2' }}>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#F2F2F2', overflow: 'hidden' }}>
 
       {/* Header */}
-      <div style={{ background: 'var(--orange)', padding: '10px 16px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ background: 'var(--orange)', padding: '10px 16px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <img src="/logo.png" alt="Лого" style={{ width: 44, height: 44, objectFit: 'contain', flexShrink: 0 }} />
         <div>
           <div style={{ color: 'white', fontWeight: 800, fontSize: 18, letterSpacing: '-0.3px' }}>Мой.Маршрут</div>
@@ -110,7 +110,7 @@ export default function Login() {
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 440 }}>
 
         {/* Welcome */}
@@ -254,7 +254,7 @@ export default function Login() {
       </div>
 
       {/* Footer */}
-      <div style={{ background: 'var(--orange)', padding: '14px 20px', textAlign: 'center' }}>
+      <div style={{ background: 'var(--orange)', padding: '14px 20px', textAlign: 'center', flexShrink: 0, paddingBottom: 'max(14px, env(safe-area-inset-bottom, 0px))' }}>
         <div style={{ color: 'white', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
           © Мои.Маршрутчики, 2026
         </div>

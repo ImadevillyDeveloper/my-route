@@ -1,4 +1,4 @@
-export type UserRole = 'driver' | 'entrepreneur';
+export type UserRole = 'driver' | 'entrepreneur' | 'admin';
 
 export interface AuthState {
   token: string | null;
