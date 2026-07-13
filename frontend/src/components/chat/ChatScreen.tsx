@@ -1177,7 +1177,7 @@ export default function ChatScreen() {
   if (active && showMembers) {
     const displayTitle = groupInfo?.title || active.title
     return (
-      <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
+      <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, height: 'var(--app-vh, 100dvh)', overflow: 'hidden' }}>
         <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={() => setShowMembers(false)}
             style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', display: 'flex' }}>
@@ -1298,7 +1298,7 @@ export default function ChatScreen() {
     const activePresence = active.type === 'dm' ? (conversations.find(c => c.key === active.key) ?? active) : null
     const activePresenceText = activePresence ? presenceLabel(!!activePresence.online, activePresence.last_seen_at) : null
     return (
-      <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
+      <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, height: 'var(--app-vh, 100dvh)', overflow: 'hidden' }}>
         <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={() => { setActive(null); setEditingId(null); setText('') }}
             style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', display: 'flex' }}>

@@ -91,7 +91,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 
 /* ── Page ── */
 .page {
-  min-height: 100vh; min-height: 100svh;
+  min-height: 100vh; min-height: 100svh; min-height: var(--app-vh, 100svh);
   background: var(--bg-gray);
   padding-top: var(--header-height);
   padding-bottom: var(--nav-safe);
