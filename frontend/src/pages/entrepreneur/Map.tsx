@@ -206,7 +206,14 @@ export default function EntMap() {
     ymapRef.current = new window.ymaps.Map(mapRef.current, {
       center: [54.9799, 73.3780], zoom: 12, controls: ['zoomControl'],
     })
+    setTimeout(() => ymapRef.current?.container?.fitToViewport(), 50)
   }, [mapReady])
+
+  useEffect(() => {
+    const handleResize = () => { if (ymapRef.current) ymapRef.current.container.fitToViewport() }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // Route polyline — only changes when favoriteRoute changes
   useEffect(() => {
