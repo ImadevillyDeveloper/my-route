@@ -50,6 +50,10 @@ def update_me(
         current_user.hints_enabled = update.hints_enabled
     if update.voice_enabled is not None:
         current_user.voice_enabled = update.voice_enabled
+    if update.active_trip_id is not None:
+        current_user.active_trip_id = update.active_trip_id
+    if update.terminal_stops_json is not None:
+        current_user.terminal_stops_json = update.terminal_stops_json
     db.commit()
     db.refresh(current_user)
     return current_user

@@ -1,12 +1,57 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getReport } from '../../api/client'
+import { getReport, getTrips, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import type { Report } from '../../types'
 
 const OIcon = ({ children }: { children: React.ReactNode }) => (
   <div className="row-icon" style={{ background: '#FFF3EE', borderRadius: 8 }}>{children}</div>
 )
+
+const fmtTime = (iso: string) => {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
+function TripsModal({ reportId, onClose }: { reportId: number; onClose: () => void }) {
+  const [trips, setTrips] = useState<Trip[] | null>(null)
+
+  useEffect(() => {
+    getTrips({ report_id: reportId }).then(r => setTrips(r.data)).catch(() => setTrips([]))
+  }, [reportId])
+
+  return (
+    <div onClick={onClose}
+      className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: 'white', borderRadius: 20, padding: '20px 22px', width: '100%', maxWidth: 380, maxHeight: '75vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <span style={{ fontWeight: 800, fontSize: 17 }}>Рейсы за смену</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
+        </div>
+        {trips === null ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
+        ) : trips.length === 0 ? (
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>Нет данных о рейсах</div>
+        ) : (
+          trips.map((t, i) => {
+            const durationMin = t.ended_at ? Math.round((new Date(t.ended_at).getTime() - new Date(t.started_at).getTime()) / 60000) : null
+            return (
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F5F5F5' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{i + 1}. {t.start_terminal} → {t.end_terminal ?? '…'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {fmtTime(t.started_at)}–{t.ended_at ? fmtTime(t.ended_at) : '…'}{durationMin != null ? ` (${durationMin} мин)` : ''}
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   pending:  { label: 'на проверке',   color: 'var(--text-muted)' },
@@ -18,6 +63,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 export default function DriverReportDetail() {
   const { id } = useParams()
   const [report, setReport] = useState<Report | null>(null)
+  const [showTrips, setShowTrips] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -58,6 +104,20 @@ export default function DriverReportDetail() {
 
         {/* Fields */}
         <div className="card">
+          {report.shift_start && (
+            <div className="row-item">
+              <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></OIcon>
+              <span className="row-label">Начало смены</span>
+              <span style={{ color: 'var(--orange)', fontWeight: 700, fontSize: 15 }}>{report.shift_start}</span>
+            </div>
+          )}
+          {report.shift_end && (
+            <div className="row-item">
+              <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></OIcon>
+              <span className="row-label">Окончание смены</span>
+              <span style={{ color: 'var(--orange)', fontWeight: 700, fontSize: 15 }}>{report.shift_end}</span>
+            </div>
+          )}
           <div className="row-item">
             <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></OIcon>
             <span className="row-label">Номер смены</span>
@@ -68,10 +128,11 @@ export default function DriverReportDetail() {
             <span className="row-label">Гос.номер ТС</span>
             <span style={{ color: 'var(--orange)', fontWeight: 700, fontSize: 15 }}>{get('Гос.номер', 'X264MP55')}</span>
           </div>
-          <div className="row-item">
+          <div className="row-item" style={{ cursor: 'pointer' }} onClick={() => setShowTrips(true)}>
             <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></svg></OIcon>
             <span className="row-label">Кол-во кругов</span>
             <span style={{ color: 'var(--orange)', fontWeight: 700, fontSize: 15 }}>{get('Кругов', String(report.total_trips))}</span>
+            <span style={{ color: 'var(--orange)', fontSize: 18, marginLeft: 4 }}>›</span>
           </div>
           <div className="row-item">
             <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></OIcon>
@@ -140,6 +201,8 @@ export default function DriverReportDetail() {
           </div>
         </div>
       </div>
+
+      {showTrips && <TripsModal reportId={report.id} onClose={() => setShowTrips(false)} />}
     </div>
   )
 }

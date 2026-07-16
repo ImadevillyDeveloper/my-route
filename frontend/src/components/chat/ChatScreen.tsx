@@ -1186,7 +1186,7 @@ export default function ChatScreen() {
           <div style={{ color: 'white', fontWeight: 800, fontSize: 16, flex: 1 }}>Информация о группе</div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', background: '#F7F7F7' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#F7F7F7' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '28px 20px', background: 'white', borderBottom: '8px solid #F0F0F0' }}>
             <div onClick={groupInfo?.is_admin && !avatarUploading ? pickGroupAvatar : undefined}
               style={{ position: 'relative', cursor: groupInfo?.is_admin && !avatarUploading ? 'pointer' : 'default' }}>

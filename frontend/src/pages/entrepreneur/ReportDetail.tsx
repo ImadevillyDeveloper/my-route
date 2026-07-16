@@ -1,8 +1,53 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { adjustReport, deleteReport, getReport, updateReportStatus } from '../../api/client'
+import { adjustReport, deleteReport, getReport, updateReportStatus, getTrips, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import type { Report } from '../../types'
+
+const fmtTime = (iso: string) => {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
+function TripsModal({ reportId, onClose }: { reportId: number; onClose: () => void }) {
+  const [trips, setTrips] = useState<Trip[] | null>(null)
+
+  useEffect(() => {
+    getTrips({ report_id: reportId }).then(r => setTrips(r.data)).catch(() => setTrips([]))
+  }, [reportId])
+
+  return (
+    <div onClick={onClose}
+      className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: 'white', borderRadius: 20, padding: '20px 22px', width: '100%', maxWidth: 380, maxHeight: '75vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <span style={{ fontWeight: 800, fontSize: 17 }}>Рейсы за смену</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
+        </div>
+        {trips === null ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
+        ) : trips.length === 0 ? (
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>Нет данных о рейсах</div>
+        ) : (
+          trips.map((t, i) => {
+            const durationMin = t.ended_at ? Math.round((new Date(t.ended_at).getTime() - new Date(t.started_at).getTime()) / 60000) : null
+            return (
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F5F5F5' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{i + 1}. {t.start_terminal} → {t.end_terminal ?? '…'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {fmtTime(t.started_at)}–{t.ended_at ? fmtTime(t.ended_at) : '…'}{durationMin != null ? ` (${durationMin} мин)` : ''}
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
 
 const OIcon = ({ children }: { children: React.ReactNode }) => (
   <div className="row-icon" style={{ background: '#FFF3EE', borderRadius: 8 }}>{children}</div>
@@ -213,6 +258,7 @@ export default function EntReportDetail() {
   const [showPayModal, setShowPayModal] = useState(false)
   const [showFineModal, setShowFineModal] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showTrips, setShowTrips] = useState(false)
   const navigate = useNavigate()
 
   const handleDelete = async () => {
@@ -318,12 +364,25 @@ export default function EntReportDetail() {
 
         {/* Fields */}
         <div className="card">
+          {report.shift_start && (
+            <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
+              label="Начало смены" value={report.shift_start} editable={false} />
+          )}
+          {report.shift_end && (
+            <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
+              label="Окончание смены" value={report.shift_end} editable={false} />
+          )}
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
             label="Номер смены" value={parseGet(report.notes ?? '')('Смена', String(report.id))} editable={false} />
           <EditRow icon={<img src="/bus.png" width="20" height="20" />}
             label="Гос.номер ТС" value={parseGet(report.notes ?? '')('Гос.номер', 'X264MP55')} editable={false} />
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>}
             label="Кол-во кругов" value={trips} editable={isPending} onChange={isPending ? markEdited(setTrips) : undefined} />
+          <div className="row-item" style={{ cursor: 'pointer' }} onClick={() => setShowTrips(true)}>
+            <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></OIcon>
+            <span className="row-label">Время рейсов</span>
+            <span className="row-arrow" style={{ color: 'var(--orange)', fontSize: 18 }}>›</span>
+          </div>
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}
             label="Кол-во карточек" value={cards} editable={isPending} onChange={isPending ? markEdited(setCards) : undefined} />
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="13 2 13 9 20 9"/><path d="M20 9L13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg>}
@@ -437,6 +496,7 @@ export default function EntReportDetail() {
       {showFineModal && (
         <FineModal onConfirm={handleFine} onClose={() => setShowFineModal(false)} />
       )}
+      {showTrips && <TripsModal reportId={report.id} onClose={() => setShowTrips(false)} />}
     </div>
   )
 }

@@ -100,6 +100,34 @@ export const getNearestStop = (routeNumber: string, lat: number, lng: number) =>
 export const postGpsPosition = (lat: number, lng: number, speed: number) =>
   api.post('/tracking/gps', { lat, lng, speed })
 
+// Trips ("рейсы")
+export interface NamedStop { name: string; lat: number; lng: number }
+export interface TerminalCoords { start: NamedStop | null; end: NamedStop | null }
+export interface StopDeparture { route_number: string; eta_min?: number; destination?: string }
+export interface StopSchedule { stop_name: string; departures: StopDeparture[]; note?: string }
+export interface Trip {
+  id: number
+  route_number: string
+  start_terminal: string
+  end_terminal: string | null
+  direction: 'forward' | 'back'
+  started_at: string
+  ended_at: string | null
+  close_method: 'gps' | 'manual' | null
+}
+export const getRouteTerminalCoords = (routeNumber: string) =>
+  api.get<TerminalCoords>('/tracking/route-terminals', { params: { route_number: routeNumber } })
+export const getNamedStops = (routeNumber: string) =>
+  api.get<NamedStop[]>('/tracking/named-stops', { params: { route_number: routeNumber } })
+export const getStopSchedule = (stopName: string, lat: number, lng: number) =>
+  api.get<StopSchedule>('/tracking/stop-schedule', { params: { stop_name: stopName, lat, lng } })
+export const openTrip = (routeNumber: string, startTerminal: string, direction: 'forward' | 'back', shiftStartRef?: string) =>
+  api.post<Trip>('/tracking/trips/open', { route_number: routeNumber, start_terminal: startTerminal, direction, shift_start_ref: shiftStartRef })
+export const closeTrip = (tripId: number, endTerminal: string, closeMethod: 'gps' | 'manual' = 'gps') =>
+  api.post<Trip>(`/tracking/trips/${tripId}/close`, { end_terminal: endTerminal, close_method: closeMethod })
+export const getTrips = (params: { report_id?: number; shift_start_ref?: string }) =>
+  api.get<Trip[]>('/tracking/trips', { params })
+
 // Chat
 export const getChatConversations = () => api.get('/chat/conversations')
 export const getChatMessages = (conversationKey: string) =>

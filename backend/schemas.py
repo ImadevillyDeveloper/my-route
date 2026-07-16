@@ -93,6 +93,8 @@ class UserOut(BaseModel):
     active_direction: Optional[str] = None
     hints_enabled: Optional[bool] = True
     voice_enabled: Optional[bool] = True
+    active_trip_id: Optional[int] = None
+    terminal_stops_json: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -107,6 +109,8 @@ class UserUpdate(BaseModel):
     active_direction: Optional[str] = None
     hints_enabled: Optional[bool] = None
     voice_enabled: Optional[bool] = None
+    active_trip_id: Optional[int] = None
+    terminal_stops_json: Optional[str] = None
 
 
 # Admin
@@ -167,6 +171,56 @@ class HintOut(BaseModel):
 
 class NearestStopOut(BaseModel):
     name: Optional[str] = None
+
+
+# Trips ("рейсы")
+class TripOut(BaseModel):
+    id: int
+    route_number: str
+    start_terminal: str
+    end_terminal: Optional[str] = None
+    direction: str
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    close_method: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TripOpen(BaseModel):
+    route_number: str
+    start_terminal: str
+    direction: str
+    shift_start_ref: Optional[str] = None  # ISO active_shift_start; если не передан — берём с текущего пользователя
+
+
+class TripClose(BaseModel):
+    end_terminal: str
+    close_method: str = "gps"  # "gps" | "manual"
+
+
+class NamedStopOut(BaseModel):
+    name: str
+    lat: float
+    lng: float
+
+
+class TerminalCoordsOut(BaseModel):
+    start: Optional[NamedStopOut] = None
+    end: Optional[NamedStopOut] = None
+
+
+class StopDeparture(BaseModel):
+    route_number: str
+    eta_min: Optional[int] = None
+    destination: Optional[str] = None
+
+
+class StopScheduleOut(BaseModel):
+    stop_name: str
+    departures: list[StopDeparture] = []
+    note: Optional[str] = None  # напр. "Расписание временно недоступно"
 
 
 class ChatConversationOut(BaseModel):

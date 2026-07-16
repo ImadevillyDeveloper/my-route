@@ -49,6 +49,18 @@ def create_report(
     db.add(report)
     db.commit()
     db.refresh(report)
+
+    # Привязываем рейсы этой смены к отчёту. active_shift_start у текущего
+    # пользователя ещё не очищен на этот момент — очистка идёт отдельным
+    # запросом с фронта уже ПОСЛЕ создания отчёта (см. Report.tsx).
+    if current_user.active_shift_start:
+        db.query(models.Trip).filter(
+            models.Trip.driver_id == current_user.id,
+            models.Trip.shift_start_ref == current_user.active_shift_start,
+            models.Trip.report_id.is_(None),
+        ).update({"report_id": report.id})
+        db.commit()
+
     return _report_out(report, db)
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
-import { sendSupport, getMe, updateMe, computeCompetitorMapping, getKnownRoutes } from '../../api/client'
+import { sendSupport, getMe, updateMe, computeCompetitorMapping, getKnownRoutes, getRoutes, getNamedStops, type NamedStop } from '../../api/client'
 
 const TOPICS = [
   { value: 'bug',      label: '🐛 Техническая проблема' },
@@ -9,6 +9,76 @@ const TOPICS = [
   { value: 'proposal', label: '💡 Предложение' },
   { value: 'other',    label: '📝 Другое' },
 ]
+
+/** Одиночный поиск-выбор остановки-ориентира для одной конечной. */
+function StopPickerRow({ terminalName, value, stops, onSelect }: {
+  terminalName: string
+  value: { stop_name: string; lat: number; lng: number } | undefined
+  stops: NamedStop[]
+  onSelect: (stop: NamedStop) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const inputRef = useRef<HTMLInputElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (!boxRef.current?.contains(e.target as Node)) setOpen(false) }
+    // Список позиционируется через position:fixed по координатам на момент открытия
+    // и не пересчитывается сам — при скролле СТРАНИЦЫ просто закрываем его, как
+    // ведут себя нативные выпадающие списки. Но сам список тоже скроллится
+    // (overflowY:auto) — тот скролл идёт через тот же window-обработчик в фазе
+    // захвата, поэтому его нужно явно отличать по e.target и не закрывать.
+    const closeOnScroll = (e: Event) => {
+      if (boxRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    window.addEventListener('scroll', closeOnScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', closeOnScroll, true)
+    }
+  }, [open])
+
+  const suggestions = query.trim()
+    ? stops.filter(s => s.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
+    : stops.slice(0, 8)
+
+  const openDrop = () => {
+    if (inputRef.current) {
+      const r = inputRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left, width: r.width })
+    }
+    setOpen(true)
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }} ref={boxRef}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Конечная «{terminalName}»</div>
+      <input ref={inputRef} className="form-input" style={{ fontSize: 14 }}
+        placeholder="Выбрать остановку..."
+        value={open ? query : (value?.stop_name ?? '')}
+        onFocus={() => { setQuery(''); openDrop() }}
+        onChange={e => { setQuery(e.target.value); openDrop() }}
+      />
+      {open && suggestions.length > 0 && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', zIndex: 2000, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
+          {suggestions.map((s, i) => (
+            <div key={s.name} onMouseDown={() => { onSelect(s); setOpen(false) }}
+              style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 14, borderBottom: i < suggestions.length - 1 ? '1px solid #F5F5F5' : 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#FFF3EE')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
+              {s.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function DriverSettings() {
   const [voiceOn, setVoiceOn] = useState(true)
@@ -30,16 +100,30 @@ export default function DriverSettings() {
   const [sendError, setSendError]       = useState('')
   const [driverRoute, setDriverRoute] = useState('')
   const [allRoutes, setAllRoutes] = useState<string[]>([])
+  const [routeTerminals, setRouteTerminals] = useState<{ start: string; end: string } | null>(null)
+  const [namedStops, setNamedStops] = useState<NamedStop[]>([])
+  const [terminalMap, setTerminalMap] = useState<Record<string, { stop_name: string; lat: number; lng: number }>>({})
   const navigate = useNavigate()
   const logout = useAuthStore(s => s.logout)
 
   useEffect(() => {
     getMe().then(r => {
-      if (r.data.route_number) setDriverRoute(r.data.route_number)
+      const route = r.data.route_number
+      if (route) {
+        setDriverRoute(route)
+        getRoutes().then(rr => {
+          const found = rr.data.find((x: any) => x.number === route)
+          if (found?.start_point && found?.end_point) setRouteTerminals({ start: found.start_point, end: found.end_point })
+        }).catch(() => {})
+        getNamedStops(route).then(res => setNamedStops(res.data)).catch(() => {})
+      }
       try {
         const saved: string[] = r.data.rival_routes_json ? JSON.parse(r.data.rival_routes_json) : []
         setRivals(saved)
       } catch {}
+      try {
+        setTerminalMap(r.data.terminal_stops_json ? JSON.parse(r.data.terminal_stops_json) : {})
+      } catch { setTerminalMap({}) }
       setHintsOn(r.data.hints_enabled !== false)
       setVoiceOn(r.data.voice_enabled !== false)
       setUserLoaded(true)
@@ -47,6 +131,14 @@ export default function DriverSettings() {
 
     getKnownRoutes().then(r => setAllRoutes(r.data)).catch(() => {})
   }, [])
+
+  const selectTerminalStop = (terminalName: string, stop: NamedStop) => {
+    setTerminalMap(prev => {
+      const next = { ...prev, [terminalName]: { stop_name: stop.name, lat: stop.lat, lng: stop.lng } }
+      updateMe({ terminal_stops_json: JSON.stringify(next) }).catch(() => {})
+      return next
+    })
+  }
 
   const openSupport = () => {
     setTopic('bug'); setMessage(''); setContact(''); setSent(false); setSendError('')
@@ -82,14 +174,19 @@ export default function DriverSettings() {
     inputRef.current?.focus()
   }
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click or scroll (fixed-position list doesn't track scroll)
   useEffect(() => {
     if (!dropOpen) return
     const handler = (e: MouseEvent) => {
       if (!dropRef.current?.contains(e.target as Node)) setDropOpen(false)
     }
+    const closeOnScroll = () => setDropOpen(false)
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    window.addEventListener('scroll', closeOnScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      window.removeEventListener('scroll', closeOnScroll, true)
+    }
   }, [dropOpen])
 
   const suggestions = inputValue.trim()
@@ -186,6 +283,20 @@ export default function DriverSettings() {
             </div>
           )}
         </div>
+
+        {/* Остановки-ориентиры на конечных */}
+        {routeTerminals && (
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Остановки для расписания на конечных</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
+              При закрытии рейса на конечной покажем расписание выбранной остановки, если сама конечная неинформативна
+            </div>
+            <StopPickerRow terminalName={routeTerminals.start} value={terminalMap[routeTerminals.start]} stops={namedStops}
+              onSelect={s => selectTerminalStop(routeTerminals.start, s)} />
+            <StopPickerRow terminalName={routeTerminals.end} value={terminalMap[routeTerminals.end]} stops={namedStops}
+              onSelect={s => selectTerminalStop(routeTerminals.end, s)} />
+          </div>
+        )}
 
         {/* Voice toggle */}
         <div className="card">

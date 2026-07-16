@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { scanReceipt, createReport, getMe, updateMe } from '../../api/client'
+import { scanReceipt, createReport, getMe, updateMe, getTrips } from '../../api/client'
 
 interface Form {
   shift_number: string
@@ -77,7 +77,14 @@ export default function DriverReport() {
       const route = r.data.route_number  || ''
       setDriverRoute(route)
       setForm(p => ({ ...p, vehicle_plate: plate }))
-      if (r.data.active_shift_start) setShiftStartTime(fmtTime(r.data.active_shift_start))
+      if (r.data.active_shift_start) {
+        setShiftStartTime(fmtTime(r.data.active_shift_start))
+        // Кол-во кругов предзаполняем по факту зафиксированных рейсов (кругов = рейсов / 2),
+        // но поле остаётся редактируемым — водитель может поправить перед отправкой.
+        getTrips({ shift_start_ref: r.data.active_shift_start }).then(tr => {
+          if (tr.data.length > 0) set('circles_count', String(Math.round(tr.data.length / 2)))
+        }).catch(() => {})
+      }
     }).catch(() => {})
   }, [])
 
@@ -131,7 +138,7 @@ export default function DriverReport() {
         route_number: driverRoute || form.vehicle_plate || undefined,
         plate_number: form.vehicle_plate || undefined,
         shift_date: new Date().toISOString().slice(0, 10),
-        shift_start: shiftStartTime, shift_end: '',
+        shift_start: shiftStartTime, shift_end: fmtTime(new Date().toISOString()),
         total_trips: Number(form.circles_count) || 0,
         total_revenue: Number(form.cards_count) * 50 || 0,
         fuel_cost: 0,

@@ -74,6 +74,8 @@ class User(Base):
     gps_lng            = Column(Float, nullable=True)
     gps_speed          = Column(Float, nullable=True)
     gps_updated_at     = Column(UTCDateTime, nullable=True)
+    active_trip_id      = Column(Integer, nullable=True)  # id открытого сейчас "рейса" (Trip.id), переживает перезагрузку страницы
+    terminal_stops_json = Column(Text, nullable=True)     # {"<конечная>": {"stop_name","lat","lng"}, ...} — личная настройка остановки-ориентира на конечной
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(UTCDateTime, server_default=func.now())
     last_seen_at = Column(UTCDateTime, nullable=True)  # обновляется при каждом запросе (throttled)
@@ -221,6 +223,29 @@ class CompetitorDirectionMap(Base):
         UniqueConstraint('our_route_number', 'our_destination', 'competitor_route_number',
                          name='uq_competitor_direction'),
     )
+
+
+class Trip(Base):
+    """Один "рейс" — однократный проезд от одной конечной маршрута до другой."""
+    __tablename__ = "trips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    driver_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    route_number = Column(String, nullable=False)
+    # = User.active_shift_start в момент открытия рейса — группирует рейсы в смену
+    # без отдельной таблицы Shift (смена и так всегда была только этим полем).
+    shift_start_ref = Column(String, nullable=False, index=True)
+    report_id = Column(Integer, ForeignKey("reports.id"), nullable=True, index=True)  # проставляется при сдаче отчёта
+
+    start_terminal = Column(String, nullable=False)
+    end_terminal   = Column(String, nullable=True)   # заполняется при закрытии рейса
+    direction      = Column(String, nullable=False)  # "forward" | "back"
+
+    started_at = Column(UTCDateTime, nullable=False)
+    ended_at   = Column(UTCDateTime, nullable=True)
+    close_method = Column(String, nullable=True)  # "gps" | "manual"
+
+    created_at = Column(UTCDateTime, server_default=func.now())
 
 
 class ChatMessage(Base):

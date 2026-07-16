@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
@@ -271,6 +271,42 @@ def _fetch_named_stops(mr_id: str) -> list[dict]:
         return stops
     except Exception:
         return []
+
+
+def _terminal_coords(route_number: str, db: Session) -> dict:
+    """Returns {"start": {"name","lat","lng"} | None, "end": {...} | None} for a
+    route's two terminals, matched against Route.start_point/end_point by the same
+    destination-name convention _compute_and_save_mapping already relies on
+    (Navitrans race destination text == Route.start_point/end_point text)."""
+    route = db.query(models.Route).filter(models.Route.number == route_number).first()
+    if not route:
+        return {"start": None, "end": None}
+
+    mr_id = _find_mr_id(route_number, db)
+    if not mr_id:
+        return {"start": None, "end": None}
+    stops_data = _fetch_route_stops(mr_id, route_number, db)
+
+    by_dest: dict[str, dict] = {}
+    for rt in ("A", "B"):
+        stop_list = stops_data.get(rt, [])
+        dest = stops_data.get(rt + "_dest")
+        if stop_list and dest:
+            last = stop_list[-1]
+            by_dest[dest] = {"name": dest, "lat": last["st_lat"], "lng": last["st_lng"]}
+
+    return {
+        "start": by_dest.get(route.start_point),
+        "end": by_dest.get(route.end_point),
+    }
+
+
+def _fetch_stop_schedule(stop_name: str, lat: float, lng: float) -> schemas.StopScheduleOut:
+    """TODO(navitrans-schedule): точный RPC-метод/параметры для расписания выезда
+    с остановки пока неизвестны (в отличие от getRoute/getUnitsInRect, уже
+    используемых выше). Ждём пример запроса с сайта bus-55.ru. Пока — заглушка
+    со стабильным контрактом, чтобы фронт можно было полностью собрать уже сейчас."""
+    return schemas.StopScheduleOut(stop_name=stop_name, departures=[], note="Расписание временно недоступно")
 
 
 def _nearest_stop_idx(lat: float, lng: float, stops: list) -> tuple[int, float]:
@@ -639,6 +675,115 @@ def get_nearest_stop(
         return schemas.NearestStopOut(name=None)
     best = min(stops, key=lambda s: _haversine_m(lat, lng, s["lat"], s["lng"]))
     return schemas.NearestStopOut(name=best["name"])
+
+
+@router.get("/route-terminals", response_model=schemas.TerminalCoordsOut)
+def get_route_terminals(
+    route_number: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Координаты двух конечных маршрута — для клиентского определения прибытия по GPS."""
+    coords = _terminal_coords(route_number, db)
+    return schemas.TerminalCoordsOut(
+        start=schemas.NamedStopOut(**coords["start"]) if coords["start"] else None,
+        end=schemas.NamedStopOut(**coords["end"]) if coords["end"] else None,
+    )
+
+
+@router.get("/named-stops", response_model=list[schemas.NamedStopOut])
+def get_named_stops_route(
+    route_number: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Все именованные остановки маршрута — для выбора остановки-ориентира в настройках."""
+    mr_id = _find_mr_id(route_number, db)
+    if not mr_id:
+        return []
+    return [schemas.NamedStopOut(**s) for s in _fetch_named_stops(mr_id)]
+
+
+@router.get("/stop-schedule", response_model=schemas.StopScheduleOut)
+def get_stop_schedule(
+    stop_name: str = Query(...),
+    lat: float = Query(...),
+    lng: float = Query(...),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Расписание выезда конкурентов с остановки. TBD — см. _fetch_stop_schedule."""
+    return _fetch_stop_schedule(stop_name, lat, lng)
+
+
+# ── Рейсы ("Trip") ──────────────────────────────────────────────
+
+@router.post("/trips/open", response_model=schemas.TripOut)
+def open_trip(
+    body: schemas.TripOpen,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Открывает новый рейс. Идемпотентно: если рейс уже открыт — возвращает его же."""
+    if current_user.active_trip_id:
+        existing = db.query(models.Trip).filter(models.Trip.id == current_user.active_trip_id).first()
+        if existing and existing.ended_at is None:
+            return existing
+
+    trip = models.Trip(
+        driver_id=current_user.id,
+        route_number=body.route_number,
+        shift_start_ref=body.shift_start_ref or current_user.active_shift_start or "",
+        start_terminal=body.start_terminal,
+        direction=body.direction,
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(trip)
+    db.flush()
+    current_user.active_trip_id = trip.id
+    db.commit()
+    db.refresh(trip)
+    return trip
+
+
+@router.post("/trips/{trip_id}/close", response_model=schemas.TripOut)
+def close_trip(
+    trip_id: int,
+    body: schemas.TripClose,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Закрывает рейс. Идемпотентно: повторный вызов на уже закрытом рейсе — не ошибка."""
+    trip = db.query(models.Trip).filter(
+        models.Trip.id == trip_id, models.Trip.driver_id == current_user.id
+    ).first()
+    if not trip:
+        raise HTTPException(404, "Рейс не найден")
+
+    if trip.ended_at is None:
+        trip.ended_at = datetime.now(timezone.utc)
+        trip.end_terminal = body.end_terminal
+        trip.close_method = body.close_method
+        if current_user.active_trip_id == trip.id:
+            current_user.active_trip_id = None
+        db.commit()
+        db.refresh(trip)
+    return trip
+
+
+@router.get("/trips", response_model=list[schemas.TripOut])
+def list_trips(
+    report_id: Optional[int] = Query(default=None),
+    shift_start_ref: Optional[str] = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Список рейсов — по отчёту (для модалки в деталях отчёта) или по смене (для форм отчёта)."""
+    q = db.query(models.Trip).filter(models.Trip.driver_id == current_user.id)
+    if report_id is not None:
+        q = q.filter(models.Trip.report_id == report_id)
+    if shift_start_ref:
+        q = q.filter(models.Trip.shift_start_ref == shift_start_ref)
+    return q.order_by(models.Trip.started_at).all()
 
 
 # ── AI Hint endpoint ──────────────────────────────────────────────
