@@ -220,6 +220,10 @@ export const updateInsurance = (id: number, data: object) =>
   api.put(`/vehicles/${id}/insurance`, data);
 
 // Drivers
+export interface RouteVehicle { id: number; plate_number: string; model: string }
+export const getMyRouteVehicles = () => api.get<RouteVehicle[]>('/drivers/me/route-vehicles')
+export const startShift = (vehiclePlate?: string) =>
+  api.post('/drivers/me/start-shift', { vehicle_plate: vehiclePlate })
 export const getDrivers = () => api.get('/drivers');
 export const createDriver = (data: object) => api.post('/drivers', data);
 export const updateDriver = (id: number, data: object) => api.put(`/drivers/${id}`, data);

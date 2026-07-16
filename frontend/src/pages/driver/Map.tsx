@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint, getNearestStop, postGpsPosition,
-  getRouteTerminalCoords, openTrip, closeTrip, getStopSchedule,
-  type NamedStop, type Trip, type StopSchedule,
+  getRouteTerminalCoords, openTrip, closeTrip, getStopSchedule, getMyRouteVehicles, startShift as startShiftApi,
+  type NamedStop, type Trip, type StopSchedule, type RouteVehicle,
 } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 
@@ -133,6 +133,14 @@ export default function DriverMap() {
   } | null>(null)
   const [focusedRoute, setFocusedRoute] = useState<string | null>(null)
 
+  // ── Выбор ТС на смену (временная подмена, не меняет назначенное предпринимателем) ──
+  const [selectedVehiclePlate, setSelectedVehiclePlate] = useState<string | null>(null)
+  const [showVehiclePicker, setShowVehiclePicker] = useState(false)
+  const [routeVehicles, setRouteVehicles] = useState<RouteVehicle[]>([])
+  const [vehiclesLoading, setVehiclesLoading] = useState(false)
+  const [shiftError, setShiftError] = useState<string | null>(null)
+  const [startingShift, setStartingShift] = useState(false)
+
   useEffect(() => {
     getMe().then(r => {
       const u = r.data
@@ -150,6 +158,7 @@ export default function DriverMap() {
         getRouteTerminalCoords(route).then(res => { terminalCoordsRef.current = res.data }).catch(() => {})
       }
       setDriverInfo(u)
+      setSelectedVehiclePlate(u.active_shift_vehicle_plate || u.vehicle_plate || null)
       if (u.active_shift_start) {
         setShiftStarted(true)
         shiftStartRef.current = u.active_shift_start
@@ -179,28 +188,51 @@ export default function DriverMap() {
     }).catch(() => { setUserLoaded(true) })
   }, [])
 
-  const startShift = () => {
-    const now = new Date().toISOString()
-    setShiftStarted(true)
-    shiftStartRef.current = now
-    updateMe({ active_shift_start: now }).catch(() => {})
+  const openVehiclePicker = () => {
+    setShowVehiclePicker(true)
+    setVehiclesLoading(true)
+    getMyRouteVehicles().then(res => setRouteVehicles(res.data)).catch(() => setRouteVehicles([])).finally(() => setVehiclesLoading(false))
+  }
 
-    // Открываем первый рейс смены сразу — конечная выбирается по ближайшей к
-    // текущей GPS-позиции, если она уже известна, иначе — по умолчанию.
-    const terminals = routeTerminalsRef.current
-    if (driverRoute !== '—' && terminals) {
-      const pos = positionRef.current
-      const tc = terminalCoordsRef.current
-      let startTerminal = terminals.start
-      if (pos && tc?.start && tc?.end) {
-        const dStart = haversineKm(pos.lat, pos.lng, tc.start.lat, tc.start.lng)
-        const dEnd   = haversineKm(pos.lat, pos.lng, tc.end.lat, tc.end.lng)
-        startTerminal = dEnd < dStart ? terminals.end : terminals.start
+  const startShift = async () => {
+    setShiftError(null)
+    setStartingShift(true)
+    // Передаём подмену ТС только если водитель реально выбрал ДРУГОЕ ТС —
+    // назначенное предпринимателем vehicle_plate в личном кабинете не меняется.
+    const plateOverride = (selectedVehiclePlate && selectedVehiclePlate !== driverInfo?.vehicle_plate)
+      ? selectedVehiclePlate : undefined
+    try {
+      const res = await startShiftApi(plateOverride)
+      setDriverInfo((prev: any) => ({ ...(prev ?? {}), ...res.data }))
+      shiftStartRef.current = res.data.active_shift_start
+      setShiftStarted(true)
+
+      // Открываем первый рейс смены сразу — конечная выбирается по ближайшей к
+      // текущей GPS-позиции, если она уже известна, иначе — по умолчанию.
+      const terminals = routeTerminalsRef.current
+      if (driverRoute !== '—' && terminals) {
+        const pos = positionRef.current
+        const tc = terminalCoordsRef.current
+        let startTerminal = terminals.start
+        if (pos && tc?.start && tc?.end) {
+          const dStart = haversineKm(pos.lat, pos.lng, tc.start.lat, tc.start.lng)
+          const dEnd   = haversineKm(pos.lat, pos.lng, tc.end.lat, tc.end.lng)
+          startTerminal = dEnd < dStart ? terminals.end : terminals.start
+        }
+        openTrip(driverRoute, startTerminal, directionRef.current, shiftStartRef.current).then(res => {
+          activeTripIdRef.current = res.data.id
+          setActiveTripId(res.data.id)
+        }).catch(() => {})
       }
-      openTrip(driverRoute, startTerminal, directionRef.current, shiftStartRef.current).then(res => {
-        activeTripIdRef.current = res.data.id
-        setActiveTripId(res.data.id)
-      }).catch(() => {})
+    } catch (e: any) {
+      setShiftError(
+        e?.response?.status === 409
+          ? 'На этом ТС уже начата смена другим водителем — выберите другое'
+          : 'Не удалось начать смену, попробуйте ещё раз'
+      )
+      if (e?.response?.status === 409) openVehiclePicker()
+    } finally {
+      setStartingShift(false)
     }
   }
 
@@ -322,7 +354,7 @@ export default function DriverMap() {
     if (!shiftStarted) return
     const poll = async () => {
       const route = driverRouteRef.current
-      const plate = driverInfoRef.current?.vehicle_plate
+      const plate = driverInfoRef.current?.active_shift_vehicle_plate || driverInfoRef.current?.vehicle_plate
       if (!route || route === '—' || !plate) return
       try {
         const res = await getRivalsLive([route])
@@ -584,7 +616,7 @@ export default function DriverMap() {
     const markersMap = rivalMarkersRef.current
 
     // Build a set of current unit IDs from new data (excluding our own vehicle)
-    const myPlate = driverInfoRef.current?.vehicle_plate
+    const myPlate = driverInfoRef.current?.active_shift_vehicle_plate || driverInfoRef.current?.vehicle_plate
     const visibleRivals = focusedRoute ? rivals.filter((r: any) => String(r.route_number) === focusedRoute) : rivals
     const incoming = new Map<string, any>()
     visibleRivals.forEach((r: any, i: number) => {
@@ -707,7 +739,8 @@ export default function DriverMap() {
   if (!shiftStarted) {
     const today = new Date()
     const dateStr = today.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + `${String(today.getHours()).padStart(2,'0')}:${String(today.getMinutes()).padStart(2,'0')}`
-    const plate = driverInfo?.vehicle_plate || '—'
+    const plate = selectedVehiclePlate || driverInfo?.vehicle_plate || '—'
+    const isSwappedPlate = !!driverInfo?.vehicle_plate && plate !== driverInfo.vehicle_plate
     const route = driverInfo?.route_number  || '—'
     const name  = driverInfo?.full_name     || ''
 
@@ -742,10 +775,13 @@ export default function DriverMap() {
               <span className="row-label">Водитель</span>
               <span className="row-value">{name || '—'}</span>
             </div>
-            <div className="row-item">
+            <div className="row-item" style={{ cursor: 'pointer' }} onClick={openVehiclePicker}>
               <div className="row-icon"><img src="/bus.png" width="20" height="20" /></div>
               <span className="row-label">Гос. номер ТС</span>
-              <span className="row-value" style={{ color: plate !== '—' ? 'var(--orange)' : undefined }}>{plate}</span>
+              <span className="row-value" style={{ color: plate !== '—' ? 'var(--orange)' : undefined }}>
+                {plate}{isSwappedPlate && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> (на смену)</span>}
+              </span>
+              <span style={{ color: 'var(--orange)', fontSize: 16, marginLeft: 4 }}>›</span>
             </div>
             <div className="row-item">
               <div className="row-icon">
@@ -800,12 +836,16 @@ export default function DriverMap() {
             )}
           </div>
 
-          <button onClick={startShift}
-            style={{ marginTop: 8, padding: '18px 24px', borderRadius: 18, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 800, fontSize: 17, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 4px 20px rgba(255,102,0,0.35)' }}>
+          <button onClick={startShift} disabled={startingShift}
+            style={{ marginTop: 8, padding: '18px 24px', borderRadius: 18, border: 'none', background: startingShift ? '#FFAA77' : 'var(--orange)', color: 'white', fontWeight: 800, fontSize: 17, cursor: startingShift ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 4px 20px rgba(255,102,0,0.35)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-            Выйти на маршрут
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            {startingShift ? 'Начинаем смену...' : 'Выйти на маршрут'}
+            {!startingShift && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>}
           </button>
+
+          {shiftError && (
+            <p style={{ textAlign: 'center', fontSize: 13, color: '#FF3B30', margin: 0, fontWeight: 600 }}>{shiftError}</p>
+          )}
 
           <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
             Время выхода на маршрут будет зафиксировано в отчёте
@@ -831,6 +871,48 @@ export default function DriverMap() {
         {rivalDropOpen && rivalInput.trim() && rivalSuggestions.length === 0 && (
           <div style={{ position: 'fixed', top: rivalDropPos.top, left: rivalDropPos.left, width: rivalDropPos.width, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid var(--border)', zIndex: 2000, padding: '12px 16px', fontSize: 14, color: 'var(--text-muted)' }}>
             {rivals2.includes(rivalInput.trim()) ? 'Уже добавлен' : 'Маршрут не найден'}
+          </div>
+        )}
+
+        {showVehiclePicker && (
+          <div onClick={() => setShowVehiclePicker(false)}
+            className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: 'white', borderRadius: 20, padding: '20px 22px', width: '100%', maxWidth: 360, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontWeight: 800, fontSize: 17 }}>Выбрать ТС на смену</span>
+                <button onClick={() => setShowVehiclePicker(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.4 }}>
+                Действует только на эту смену — в личном кабинете останется назначенное предпринимателем ТС
+              </div>
+
+              {vehiclesLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
+              ) : (
+                <>
+                  {driverInfo?.vehicle_plate && (
+                    <div onClick={() => { setSelectedVehiclePlate(driverInfo.vehicle_plate); setShowVehiclePicker(false) }}
+                      style={{ padding: '12px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer', border: `1.5px solid ${(selectedVehiclePlate ?? driverInfo.vehicle_plate) === driverInfo.vehicle_plate ? 'var(--orange)' : 'var(--border)'}`, background: (selectedVehiclePlate ?? driverInfo.vehicle_plate) === driverInfo.vehicle_plate ? '#FFF3EE' : 'white' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{driverInfo.vehicle_plate}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Назначено предпринимателем</div>
+                    </div>
+                  )}
+                  {routeVehicles.filter(v => v.plate_number !== driverInfo?.vehicle_plate).map(v => (
+                    <div key={v.id} onClick={() => { setSelectedVehiclePlate(v.plate_number); setShowVehiclePicker(false) }}
+                      style={{ padding: '12px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer', border: `1.5px solid ${selectedVehiclePlate === v.plate_number ? 'var(--orange)' : 'var(--border)'}`, background: selectedVehiclePlate === v.plate_number ? '#FFF3EE' : 'white' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{v.plate_number}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.model}</div>
+                    </div>
+                  ))}
+                  {routeVehicles.filter(v => v.plate_number !== driverInfo?.vehicle_plate).length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '16px 8px' }}>
+                      Других свободных ТС на маршруте сейчас нет
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -867,9 +949,9 @@ export default function DriverMap() {
             ? `Навигация: данные Навитранса (ГЛОНАСС)`
             : `Навигация: GPS устройства`}
         </span>
-        {isNavTracked && driverInfo?.vehicle_plate && (
+        {isNavTracked && (driverInfo?.active_shift_vehicle_plate || driverInfo?.vehicle_plate) && (
           <span style={{ fontSize: 10, color: 'rgba(52,199,89,0.7)', fontWeight: 600 }}>
-            {driverInfo.vehicle_plate}
+            {driverInfo.active_shift_vehicle_plate || driverInfo.vehicle_plate}
           </span>
         )}
       </div>

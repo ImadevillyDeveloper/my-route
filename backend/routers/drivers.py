@@ -1,13 +1,80 @@
 import os, random
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from .. import models, schemas
 from ..database import get_db
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_driver
 from ..storage import save_upload
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
+
+
+def _plate_busy_query(db: Session, plate: str, exclude_user_id: int):
+    """Есть ли ДРУГОЙ водитель с активной сменой на этом гос.номере (с учётом
+    временной подмены ТС на смену)?"""
+    return db.query(models.User).filter(
+        models.User.role == models.UserRole.driver,
+        models.User.id != exclude_user_id,
+        models.User.active_shift_start.isnot(None),
+        or_(
+            models.User.active_shift_vehicle_plate == plate,
+            and_(models.User.active_shift_vehicle_plate.is_(None), models.User.vehicle_plate == plate),
+        ),
+    ).first()
+
+
+@router.get("/me/route-vehicles", response_model=list[schemas.VehicleOut])
+def get_my_route_vehicles(
+    current_user: models.User = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    """ТС на маршруте водителя, доступные для выбора на смену (т.е. на которых
+    прямо сейчас не начата смена другим водителем)."""
+    if not current_user.route_number:
+        return []
+    route = db.query(models.Route).filter(models.Route.number == current_user.route_number).first()
+    if not route:
+        return []
+    from .vehicles import _vehicle_out
+    vehicles = db.query(models.Vehicle).filter(
+        models.Vehicle.route_id == route.id,
+        models.Vehicle.owner_id == current_user.owner_id,
+    ).all()
+    available = [v for v in vehicles if not _plate_busy_query(db, v.plate_number, current_user.id)]
+    return [_vehicle_out(v, db) for v in available]
+
+
+@router.post("/me/start-shift", response_model=schemas.UserOut)
+def start_shift(
+    body: schemas.StartShiftRequest,
+    current_user: models.User = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    """Начинает смену. Если передан vehicle_plate, отличный от назначенного
+    предпринимателем ТС, — используем его ТОЛЬКО на эту смену (постоянное
+    vehicle_plate в личном кабинете не меняется), при условии что на нём прямо
+    сейчас не начата смена другим водителем."""
+    plate = (body.vehicle_plate or "").strip() or None
+    if plate and plate != current_user.vehicle_plate:
+        vehicle = db.query(models.Vehicle).filter(
+            models.Vehicle.plate_number == plate,
+            models.Vehicle.owner_id == current_user.owner_id,
+        ).first()
+        if not vehicle:
+            raise HTTPException(404, "ТС не найдено")
+        if _plate_busy_query(db, plate, current_user.id):
+            raise HTTPException(409, "На этом ТС уже начата смена другим водителем")
+        current_user.active_shift_vehicle_plate = plate
+    else:
+        current_user.active_shift_vehicle_plate = None
+
+    current_user.active_shift_start = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    db.commit()
+    db.refresh(current_user)
+    return current_user
 
 
 @router.get("", response_model=list[schemas.DriverOut])

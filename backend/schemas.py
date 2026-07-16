@@ -44,6 +44,10 @@ class DriverUpdate(BaseModel):
     route_number: Optional[str] = None  # "" — снять маршрут, иначе назначить
 
 
+class StartShiftRequest(BaseModel):
+    vehicle_plate: Optional[str] = None  # если задан и отличается от назначенного — ТС только на эту смену
+
+
 class DriverOut(BaseModel):
     id: int
     full_name: str
@@ -95,6 +99,7 @@ class UserOut(BaseModel):
     voice_enabled: Optional[bool] = True
     active_trip_id: Optional[int] = None
     terminal_stops_json: Optional[str] = None
+    active_shift_vehicle_plate: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -111,6 +116,7 @@ class UserUpdate(BaseModel):
     voice_enabled: Optional[bool] = None
     active_trip_id: Optional[int] = None
     terminal_stops_json: Optional[str] = None
+    active_shift_vehicle_plate: Optional[str] = None
 
 
 # Admin

@@ -617,14 +617,15 @@ def get_rivals_live(
         models.User.role == models.UserRole.driver,
         models.User.route_number.in_(route_list),
         models.User.active_shift_start.isnot(None),
-        models.User.vehicle_plate.isnot(None),
         models.User.gps_updated_at.isnot(None),
     ).all()
 
     now = datetime.now(timezone.utc)
     for d in gps_drivers:
         route_num = (d.route_number or "").strip()
-        plate = (d.vehicle_plate or "").strip()
+        # Временная подмена ТС на смену (active_shift_vehicle_plate) имеет приоритет
+        # над постоянно назначенным vehicle_plate — именно на ней сейчас едет водитель.
+        plate = (d.active_shift_vehicle_plate or d.vehicle_plate or "").strip()
         if not route_num or not plate:
             continue
         if plate in navitrans_plates.get(route_num, set()):
@@ -649,7 +650,7 @@ def get_rivals_live(
             speed=d.gps_speed or 0.0,
             direction=direction,
             route_number=route_num,
-            plate_number=d.vehicle_plate,
+            plate_number=plate,
             model=None,
             status="active",
             source="gps",

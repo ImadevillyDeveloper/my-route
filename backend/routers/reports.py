@@ -33,6 +33,9 @@ def create_report(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if not current_user.active_shift_start:
+        raise HTTPException(400, "Нельзя сформировать отчёт: смена не начата")
+
     data = report_in.model_dump()
     plate = data.pop("plate_number", None)
     vehicle_id = None

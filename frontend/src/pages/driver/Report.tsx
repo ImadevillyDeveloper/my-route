@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { scanReceipt, createReport, getMe, updateMe, getTrips } from '../../api/client'
+import LogoLoader from '../../components/common/LogoLoader'
 
 interface Form {
   shift_number: string
@@ -57,6 +58,7 @@ export default function DriverReport() {
   const [showError, setShowError] = useState(false)
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [shiftStartTime, setShiftStartTime] = useState('')
+  const [shiftActive, setShiftActive] = useState<boolean | null>(null)  // null = ещё не проверили
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -73,10 +75,11 @@ export default function DriverReport() {
 
   useEffect(() => {
     getMe().then(r => {
-      const plate = r.data.vehicle_plate || ''
+      const plate = r.data.active_shift_vehicle_plate || r.data.vehicle_plate || ''
       const route = r.data.route_number  || ''
       setDriverRoute(route)
       setForm(p => ({ ...p, vehicle_plate: plate }))
+      setShiftActive(!!r.data.active_shift_start)
       if (r.data.active_shift_start) {
         setShiftStartTime(fmtTime(r.data.active_shift_start))
         // Кол-во кругов предзаполняем по факту зафиксированных рейсов (кругов = рейсов / 2),
@@ -85,16 +88,19 @@ export default function DriverReport() {
           if (tr.data.length > 0) set('circles_count', String(Math.round(tr.data.length / 2)))
         }).catch(() => {})
       }
-    }).catch(() => {})
+    }).catch(() => setShiftActive(false))
   }, [])
 
   const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
+  const setDigits = (k: keyof Form, v: string) => set(k, v.replace(/\D/g, ''))
+
+  const isDigits = (s: string) => /^\d+$/.test(s.trim())
 
   const isValid = () =>
-    form.shift_number.trim() !== '' &&
+    isDigits(form.shift_number) &&
     form.vehicle_plate.trim() !== '' &&
-    form.circles_count.trim() !== '' &&
-    form.cards_count.trim() !== '' &&
+    isDigits(form.circles_count) &&
+    isDigits(form.cards_count) &&
     form.vehicle_condition !== 'Выберите'
 
   const openCamera = async () => {
@@ -145,7 +151,7 @@ export default function DriverReport() {
         notes: `Гос.номер: ${form.vehicle_plate}, Маршрут: ${driverRoute}, Смена: ${form.shift_number}, Выход: ${shiftStartTime || '—'}, Кругов: ${form.circles_count}, Карточек: ${form.cards_count}, ТС: ${form.vehicle_condition}`,
       })
       if (res.data?.id) setCreatedId(res.data.id)
-      updateMe({ active_shift_start: '' }).catch(() => {})
+      updateMe({ active_shift_start: '', active_shift_vehicle_plate: '' }).catch(() => {})
     } catch {}
     finally { setSubmitting(false) }
     setShowSuccess(true)
@@ -156,6 +162,30 @@ export default function DriverReport() {
     setScanned(false)
     setShowSuccess(false)
   }
+
+  if (shiftActive === null) return <LogoLoader fullPage />
+
+  if (!shiftActive) return (
+    <div className="page">
+      <div className="app-header">
+        <button className="app-header-back" onClick={() => navigate(-1)}>←</button>
+        <span className="app-header-title">Формирование Отчёта</span>
+      </div>
+      <div style={{ padding: '60px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+        <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#F5F5F5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>Смена не начата</div>
+        <div style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Чтобы сформировать отчёт, сначала выйдите на маршрут на экране «Карта».
+        </div>
+        <button onClick={() => navigate('/driver/map')}
+          style={{ marginTop: 8, padding: '14px 28px', borderRadius: 50, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+          На карту
+        </button>
+      </div>
+    </div>
+  )
 
   if (showCamera) return (
     <div style={{ position: 'fixed', inset: 0, background: 'black', zIndex: 999, display: 'flex', flexDirection: 'column' }}>
@@ -210,8 +240,8 @@ export default function DriverReport() {
             </FieldRow>
           )}
           <FieldRow label="Номер смены:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}>
-            <input className="row-input" placeholder="Введите..." value={form.shift_number} onChange={e => set('shift_number', e.target.value)}
-              style={{ color: form.shift_number ? 'var(--orange)' : undefined }} />
+            <input className="row-input" placeholder="Введите..." value={form.shift_number} onChange={e => setDigits('shift_number', e.target.value)}
+              inputMode="numeric" style={{ color: form.shift_number ? 'var(--orange)' : undefined }} />
           </FieldRow>
           <FieldRow label="Гос. номер ТС:" icon={<img src="/bus.png" width="20" height="20" />}>
             <span className={form.vehicle_plate ? 'row-value' : 'row-value-gray'}>
@@ -219,12 +249,12 @@ export default function DriverReport() {
             </span>
           </FieldRow>
           <FieldRow label="Кол-во кругов:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></svg>}>
-            <input className="row-input" placeholder="Введите..." value={form.circles_count} onChange={e => set('circles_count', e.target.value)} type="number"
-              style={{ color: form.circles_count ? 'var(--orange)' : undefined }} />
+            <input className="row-input" placeholder="Введите..." value={form.circles_count} onChange={e => setDigits('circles_count', e.target.value)}
+              inputMode="numeric" style={{ color: form.circles_count ? 'var(--orange)' : undefined }} />
           </FieldRow>
           <FieldRow label="Кол-во карточек:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}>
-            <input className="row-input" placeholder="Введите..." value={form.cards_count} onChange={e => set('cards_count', e.target.value)} type="number"
-              style={{ color: form.cards_count ? 'var(--orange)' : undefined }} />
+            <input className="row-input" placeholder="Введите..." value={form.cards_count} onChange={e => setDigits('cards_count', e.target.value)}
+              inputMode="numeric" style={{ color: form.cards_count ? 'var(--orange)' : undefined }} />
           </FieldRow>
           <FieldRow label="Состояние ТС:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}>
             <select value={form.vehicle_condition} onChange={e => set('vehicle_condition', e.target.value)}
