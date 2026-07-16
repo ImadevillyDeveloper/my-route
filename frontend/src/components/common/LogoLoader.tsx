@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react'
 
 const FRAMES = ['/logo-f1.png', '/logo-f2.png', '/logo-f3.png', '/logo-f4.png']
 
+// Кадры — отдельные PNG-файлы; без предзагрузки первый показ анимации может
+// дёргаться (браузер догружает следующий кадр по ходу смены). Грузим все
+// сразу один раз при первом импорте модуля, чтобы к моменту любого показа
+// лоадера все кадры уже были в кэше и смена шла плавно с самого начала.
+if (typeof window !== 'undefined') {
+  FRAMES.forEach(src => { const img = new Image(); img.src = src })
+}
+
 interface Props {
   size?: number
   fullPage?: boolean
@@ -29,13 +37,13 @@ export default function LogoLoader({ size = 72, fullPage = false }: Props) {
 
   return (
     <div style={{
+      position: 'fixed', inset: 0, zIndex: 500,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 14,
-      minHeight: 220,
-      width: '100%',
+      background: 'var(--bg-gray)',
     }}>
       {img}
       <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>Загрузка...</span>
