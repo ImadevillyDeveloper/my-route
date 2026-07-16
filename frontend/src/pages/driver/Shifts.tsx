@@ -330,6 +330,8 @@ export default function DriverShifts() {
             )}
           </>
         )
+      ) : loading ? (
+        <LogoLoader fullPage />
       ) : (
         <div className="card" style={{ margin: '12px 14px', borderRadius: 12 }}>
           {filteredSalary.length === 0 ? (

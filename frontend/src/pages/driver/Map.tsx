@@ -142,50 +142,61 @@ export default function DriverMap() {
   const [startingShift, setStartingShift] = useState(false)
 
   useEffect(() => {
-    getMe().then(r => {
-      const u = r.data
-      const route = u.route_number
-      if (route) {
-        setDriverRoute(route)
-        getRoutes().then(rr => {
-          const found = rr.data.find((x: any) => x.number === route)
-          if (found?.start_point && found?.end_point) {
-            const t = { start: found.start_point, end: found.end_point }
-            routeTerminalsRef.current = t
-            setRouteTerminals(t)
-          }
-        }).catch(() => {})
-        getRouteTerminalCoords(route).then(res => { terminalCoordsRef.current = res.data }).catch(() => {})
-      }
-      setDriverInfo(u)
-      setSelectedVehiclePlate(u.active_shift_vehicle_plate || u.vehicle_plate || null)
-      if (u.active_shift_start) {
-        setShiftStarted(true)
-        shiftStartRef.current = u.active_shift_start
-      }
-      if (u.active_trip_id) {
-        activeTripIdRef.current = u.active_trip_id
-        setActiveTripId(u.active_trip_id)
-      }
+    (async () => {
       try {
-        terminalStopsRef.current = u.terminal_stops_json ? JSON.parse(u.terminal_stops_json) : {}
-      } catch { terminalStopsRef.current = {} }
-      if (u.active_direction === 'forward' || u.active_direction === 'back') {
-        directionRef.current = u.active_direction
-        setDirection(u.active_direction)
+        const r = await getMe()
+        const u = r.data
+        const route = u.route_number
+        if (route) {
+          setDriverRoute(route)
+          try {
+            const rr = await getRoutes()
+            const found = rr.data.find((x: any) => x.number === route)
+            if (found?.start_point && found?.end_point) {
+              const t = { start: found.start_point, end: found.end_point }
+              routeTerminalsRef.current = t
+              setRouteTerminals(t)
+            }
+          } catch {}
+          try {
+            const res = await getRouteTerminalCoords(route)
+            terminalCoordsRef.current = res.data
+          } catch {}
+        }
+        setDriverInfo(u)
+        setSelectedVehiclePlate(u.active_shift_vehicle_plate || u.vehicle_plate || null)
+        if (u.active_shift_start) {
+          setShiftStarted(true)
+          shiftStartRef.current = u.active_shift_start
+        }
+        if (u.active_trip_id) {
+          activeTripIdRef.current = u.active_trip_id
+          setActiveTripId(u.active_trip_id)
+        }
+        try {
+          terminalStopsRef.current = u.terminal_stops_json ? JSON.parse(u.terminal_stops_json) : {}
+        } catch { terminalStopsRef.current = {} }
+        if (u.active_direction === 'forward' || u.active_direction === 'back') {
+          directionRef.current = u.active_direction
+          setDirection(u.active_direction)
+        }
+        try {
+          const savedRivals: string[] = u.rival_routes_json ? JSON.parse(u.rival_routes_json) : []
+          setRivals2(savedRivals)
+        } catch {}
+        const hintsOn = u.hints_enabled !== false
+        hintsEnabledRef.current = hintsOn
+        setHintsEnabled(hintsOn)
+        const voiceEnabled = u.voice_enabled !== false
+        voiceOnRef.current = voiceEnabled
+        setVoiceOn(voiceEnabled)
+      } finally {
+        // Не показываем экран (ни "начало смены", ни активную смену), пока
+        // реальные данные — маршрут, конечные, координаты — не подгружены,
+        // иначе на секунду мелькают "—"/дефолтные значения.
+        setUserLoaded(true)
       }
-      try {
-        const savedRivals: string[] = u.rival_routes_json ? JSON.parse(u.rival_routes_json) : []
-        setRivals2(savedRivals)
-      } catch {}
-      const hintsOn = u.hints_enabled !== false
-      hintsEnabledRef.current = hintsOn
-      setHintsEnabled(hintsOn)
-      const voiceEnabled = u.voice_enabled !== false
-      voiceOnRef.current = voiceEnabled
-      setVoiceOn(voiceEnabled)
-      setUserLoaded(true)
-    }).catch(() => { setUserLoaded(true) })
+    })()
   }, [])
 
   const openVehiclePicker = () => {
@@ -735,6 +746,8 @@ export default function DriverMap() {
       speak(res.data.message)
     } catch {}
   }
+
+  if (!userLoaded) return <LogoLoader fullPage />
 
   if (!shiftStarted) {
     const today = new Date()

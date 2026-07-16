@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { getRoutesWithOverrides } from '../../api/routes'
 import { sendSupport } from '../../api/client'
+import LogoLoader from '../../components/common/LogoLoader'
 
 const FAV_ROUTE_KEY = 'ent_favorite_route'
 
@@ -32,6 +33,7 @@ interface Route { number: string; name: string; start_point: string; end_point: 
 
 export default function EntSettings() {
   const [routes, setRoutes]               = useState<Route[]>([])
+  const [routesLoaded, setRoutesLoaded]   = useState(false)
   const [favorite, setFavorite]           = useState<string>(() => localStorage.getItem(FAV_ROUTE_KEY) ?? '')
   const [dropOpen, setDropOpen]           = useState(false)
   const [dropPos, setDropPos]             = useState({ top: 0, left: 0, width: 0 })
@@ -49,7 +51,7 @@ export default function EntSettings() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    getRoutesWithOverrides().then(setRoutes).catch(() => {})
+    getRoutesWithOverrides().then(setRoutes).catch(() => {}).finally(() => setRoutesLoaded(true))
   }, [])
 
   useEffect(() => {
@@ -101,6 +103,8 @@ export default function EntSettings() {
   }
 
   const favRoute = routes.find(r => r.number === favorite)
+
+  if (!routesLoaded) return <div className="page"><LogoLoader fullPage /></div>
 
   return (
     <div className="page" style={{ position: 'relative' }}>

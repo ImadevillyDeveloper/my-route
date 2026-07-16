@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/auth'
 import { loginAdmin, getAdminEntrepreneurs, createAdminEntrepreneur, deleteAdminEntrepreneur, resolveAssetUrl, type AdminEntrepreneur } from '../../api/client'
 import { formatPhone, capitalizeName } from '../../utils/format'
+import LogoLoader from '../../components/common/LogoLoader'
 
 function AdminLogin() {
   const [password, setPassword] = useState('')
@@ -201,7 +202,7 @@ function AdminEntrepreneurs() {
 
       <div style={{ padding: '0 16px 24px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, maxWidth: 640, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Загрузка...</div>
+          <LogoLoader fullPage />
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
             {search ? 'Ничего не найдено' : 'Пока нет ни одного ИП'}

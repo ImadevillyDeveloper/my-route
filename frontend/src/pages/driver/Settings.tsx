@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { sendSupport, getMe, updateMe, computeCompetitorMapping, getKnownRoutes, getRoutes, getNamedStops, type NamedStop } from '../../api/client'
+import LogoLoader from '../../components/common/LogoLoader'
 
 const TOPICS = [
   { value: 'bug',      label: '🐛 Техническая проблема' },
@@ -107,27 +108,38 @@ export default function DriverSettings() {
   const logout = useAuthStore(s => s.logout)
 
   useEffect(() => {
-    getMe().then(r => {
-      const route = r.data.route_number
-      if (route) {
-        setDriverRoute(route)
-        getRoutes().then(rr => {
-          const found = rr.data.find((x: any) => x.number === route)
-          if (found?.start_point && found?.end_point) setRouteTerminals({ start: found.start_point, end: found.end_point })
-        }).catch(() => {})
-        getNamedStops(route).then(res => setNamedStops(res.data)).catch(() => {})
+    (async () => {
+      try {
+        const r = await getMe()
+        const route = r.data.route_number
+        if (route) {
+          setDriverRoute(route)
+          try {
+            const rr = await getRoutes()
+            const found = rr.data.find((x: any) => x.number === route)
+            if (found?.start_point && found?.end_point) setRouteTerminals({ start: found.start_point, end: found.end_point })
+          } catch {}
+          try {
+            const res = await getNamedStops(route)
+            setNamedStops(res.data)
+          } catch {}
+        }
+        try {
+          const saved: string[] = r.data.rival_routes_json ? JSON.parse(r.data.rival_routes_json) : []
+          setRivals(saved)
+        } catch {}
+        try {
+          setTerminalMap(r.data.terminal_stops_json ? JSON.parse(r.data.terminal_stops_json) : {})
+        } catch { setTerminalMap({}) }
+        setHintsOn(r.data.hints_enabled !== false)
+        setVoiceOn(r.data.voice_enabled !== false)
+      } finally {
+        // Показываем страницу только когда реальные данные (включая маршрут,
+        // конечные и остановки) уже подгружены — иначе на секунду мелькают
+        // значения по умолчанию (включённые тумблеры, отсутствующая карточка).
+        setUserLoaded(true)
       }
-      try {
-        const saved: string[] = r.data.rival_routes_json ? JSON.parse(r.data.rival_routes_json) : []
-        setRivals(saved)
-      } catch {}
-      try {
-        setTerminalMap(r.data.terminal_stops_json ? JSON.parse(r.data.terminal_stops_json) : {})
-      } catch { setTerminalMap({}) }
-      setHintsOn(r.data.hints_enabled !== false)
-      setVoiceOn(r.data.voice_enabled !== false)
-      setUserLoaded(true)
-    }).catch(() => { setUserLoaded(true) })
+    })()
 
     getKnownRoutes().then(r => setAllRoutes(r.data)).catch(() => {})
   }, [])
@@ -212,6 +224,8 @@ export default function DriverSettings() {
       return next
     })
   }
+
+  if (!userLoaded) return <LogoLoader fullPage />
 
   return (
     <div className="page">

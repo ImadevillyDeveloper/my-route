@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getVehicleMaintenance, updateMaintenance, getVehicleInsurance } from '../../api/client'
+import LogoLoader from '../../components/common/LogoLoader'
 
 type ReminderKey = 'kasko' | 'osago' | 'to'
 interface ReminderConfig { enabled: boolean; daysBefore: number[] }
@@ -47,9 +48,10 @@ export default function VehicleReminders() {
   const navigate = useNavigate()
   const [reminders, setReminders] = useState<RemindersState>(DEFAULTS)
   const [deadlines, setDeadlines] = useState<{ kasko: string | null; osago: string | null; to: string | null }>({ kasko: null, osago: null, to: null })
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    if (!id) return
+    if (!id) { setLoaded(true); return }
     Promise.all([
       getVehicleMaintenance(Number(id)).catch(() => ({ data: null })),
       getVehicleInsurance(Number(id)).catch(() => ({ data: null })),
@@ -64,7 +66,7 @@ export default function VehicleReminders() {
         osago: ins?.end_date       ?? null,
         to:    maint?.next_date    ?? null,
       })
-    })
+    }).finally(() => setLoaded(true))
   }, [id])
 
   const saveReminders = (next: RemindersState) => {
@@ -81,6 +83,8 @@ export default function VehicleReminders() {
     const next = prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
     saveReminders({ ...reminders, [key]: { ...reminders[key], daysBefore: next } })
   }
+
+  if (!loaded) return <div className="page"><LogoLoader fullPage /></div>
 
   return (
     <div className="page">
