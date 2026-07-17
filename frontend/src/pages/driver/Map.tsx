@@ -583,10 +583,17 @@ export default function DriverMap() {
     setTimeout(() => ymapRef.current?.container?.fitToViewport(), 50)
   }, [mapReady, shiftStarted])
 
+  // Яндекс.Карты сами не следят за размером своего контейнера — если он
+  // меняется (например, нижний информационный блок вырос/сжался после
+  // подгрузки реальных данных), карту нужно попросить пересчитаться явно.
+  // ResizeObserver ловит любое такое изменение, а не только resize окна.
   useEffect(() => {
-    const handleResize = () => { if (ymapRef.current) ymapRef.current.container.fitToViewport() }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    if (!mapRef.current) return
+    const refit = () => { if (ymapRef.current) ymapRef.current.container.fitToViewport() }
+    const ro = new ResizeObserver(refit)
+    ro.observe(mapRef.current)
+    window.addEventListener('resize', refit)
+    return () => { ro.disconnect(); window.removeEventListener('resize', refit) }
   }, [])
 
   // ── Метка водителя ───────────────────────────────────────────────
@@ -891,40 +898,44 @@ export default function DriverMap() {
           <div onClick={() => setShowVehiclePicker(false)}
             className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
             <div onClick={e => e.stopPropagation()}
-              style={{ background: 'white', borderRadius: 20, padding: '20px 22px', width: '100%', maxWidth: 360, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontWeight: 800, fontSize: 17 }}>Выбрать ТС на смену</span>
-                <button onClick={() => setShowVehiclePicker(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.4 }}>
-                Действует только на эту смену — в личном кабинете останется назначенное предпринимателем ТС
+              style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 360, maxHeight: 'calc(var(--app-vh, 100vh) * 0.7)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+              <div style={{ padding: '20px 22px 0', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontWeight: 800, fontSize: 17 }}>Выбрать ТС на смену</span>
+                  <button onClick={() => setShowVehiclePicker(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.4 }}>
+                  Действует только на эту смену — в личном кабинете останется назначенное предпринимателем ТС
+                </div>
               </div>
 
-              {vehiclesLoading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
-              ) : (
-                <>
-                  {driverInfo?.vehicle_plate && (
-                    <div onClick={() => { setSelectedVehiclePlate(driverInfo.vehicle_plate); setShowVehiclePicker(false) }}
-                      style={{ padding: '12px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer', border: `1.5px solid ${(selectedVehiclePlate ?? driverInfo.vehicle_plate) === driverInfo.vehicle_plate ? 'var(--orange)' : 'var(--border)'}`, background: (selectedVehiclePlate ?? driverInfo.vehicle_plate) === driverInfo.vehicle_plate ? '#FFF3EE' : 'white' }}>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{driverInfo.vehicle_plate}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Назначено предпринимателем</div>
-                    </div>
-                  )}
-                  {routeVehicles.filter(v => v.plate_number !== driverInfo?.vehicle_plate).map(v => (
-                    <div key={v.id} onClick={() => { setSelectedVehiclePlate(v.plate_number); setShowVehiclePicker(false) }}
-                      style={{ padding: '12px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer', border: `1.5px solid ${selectedVehiclePlate === v.plate_number ? 'var(--orange)' : 'var(--border)'}`, background: selectedVehiclePlate === v.plate_number ? '#FFF3EE' : 'white' }}>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{v.plate_number}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.model}</div>
-                    </div>
-                  ))}
-                  {routeVehicles.filter(v => v.plate_number !== driverInfo?.vehicle_plate).length === 0 && (
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '16px 8px' }}>
-                      Других свободных ТС на маршруте сейчас нет
-                    </div>
-                  )}
-                </>
-              )}
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 22px 20px' }}>
+                {vehiclesLoading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
+                ) : (
+                  <>
+                    {driverInfo?.vehicle_plate && (
+                      <div onClick={() => { setSelectedVehiclePlate(driverInfo.vehicle_plate); setShowVehiclePicker(false) }}
+                        style={{ padding: '12px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer', border: `1.5px solid ${(selectedVehiclePlate ?? driverInfo.vehicle_plate) === driverInfo.vehicle_plate ? 'var(--orange)' : 'var(--border)'}`, background: (selectedVehiclePlate ?? driverInfo.vehicle_plate) === driverInfo.vehicle_plate ? '#FFF3EE' : 'white' }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{driverInfo.vehicle_plate}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Назначено предпринимателем</div>
+                      </div>
+                    )}
+                    {routeVehicles.filter(v => v.plate_number !== driverInfo?.vehicle_plate).map(v => (
+                      <div key={v.id} onClick={() => { setSelectedVehiclePlate(v.plate_number); setShowVehiclePicker(false) }}
+                        style={{ padding: '12px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer', border: `1.5px solid ${selectedVehiclePlate === v.plate_number ? 'var(--orange)' : 'var(--border)'}`, background: selectedVehiclePlate === v.plate_number ? '#FFF3EE' : 'white' }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{v.plate_number}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.model}</div>
+                      </div>
+                    ))}
+                    {routeVehicles.filter(v => v.plate_number !== driverInfo?.vehicle_plate).length === 0 && (
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '16px 8px' }}>
+                        Других свободных ТС на маршруте сейчас нет
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

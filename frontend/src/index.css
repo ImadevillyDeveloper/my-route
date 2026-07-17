@@ -441,6 +441,9 @@ input, textarea, select { font-family: inherit; outline: none; }
   /* Map modals: center relative to map area (right of sidebar) */
   .map-overlay { left: 240px !important; }
 
+  /* Full-page loader: don't cover the sidebar on desktop */
+  .logo-loader-fullpage { left: 240px !important; }
+
   /* Map bottom bar: nav is hidden on desktop, remove nav-safe padding */
   .map-info-bar { padding-bottom: 12px !important; }
 }

@@ -121,10 +121,18 @@ export default function EntMap() {
     setTimeout(() => ymapRef.current?.container?.fitToViewport(), 50)
   }, [mapReady])
 
+  // Яндекс.Карты сами не следят за размером своего контейнера — если он
+  // меняется (например, нижний блок с "Подробнее" вырос/сжался после того,
+  // как подгрузились реальные данные), карту нужно попросить пересчитаться
+  // явно. ResizeObserver ловит любое такое изменение, а не только resize
+  // окна — это надёжнее фиксированного таймера после инициализации.
   useEffect(() => {
-    const handleResize = () => { if (ymapRef.current) ymapRef.current.container.fitToViewport() }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    if (!mapRef.current) return
+    const refit = () => { if (ymapRef.current) ymapRef.current.container.fitToViewport() }
+    const ro = new ResizeObserver(refit)
+    ro.observe(mapRef.current)
+    window.addEventListener('resize', refit)
+    return () => { ro.disconnect(); window.removeEventListener('resize', refit) }
   }, [])
 
   // Маркеры ТС — реальные позиции (Навитранс/ГЛОНАСС + GPS-фолбэк), без
@@ -143,17 +151,12 @@ export default function EntMap() {
     navVehicles.forEach(v => {
       const isGps = v.source === 'gps'
       const preset = isGps ? 'islands#greyStretchyIcon' : (dirToPreset[v.direction || ''] ?? 'islands#greyCircleDotIcon')
-      const balloon = [
-        `<b>Маршрут №${v.route_number ?? '—'}</b>`,
-        v.direction ? `<span style="color:#888">${v.direction}</span>` : '',
-        v.plate_number ? `Гос. номер: <b>${v.plate_number}</b>` : '',
-        `Скорость: <b>${v.speed.toFixed(0)} км/ч</b>`,
-        isGps ? `<span style="color:#FF6600">📡 Нет данных Навитранс — GPS водителя</span>` : '',
-      ].filter(Boolean).join('<br/>')
+      // hasBalloon:false — у нас своя карточка по клику (setSelectedNav), родной
+      // балун Яндекс.Карт поверх неё не нужен.
       const m = new window.ymaps.Placemark(
         [v.lat, v.lng],
-        { balloonContent: balloon, hintContent: v.plate_number || '?', iconContent: isGps ? (v.plate_number || '') : undefined },
-        { preset }
+        { hintContent: v.plate_number || '?', iconContent: isGps ? (v.plate_number || '') : undefined },
+        { preset, hasBalloon: false }
       )
       m.events.add('click', () => setSelectedNav(v))
       ymapRef.current.geoObjects.add(m)
@@ -286,7 +289,7 @@ export default function EntMap() {
       {showPanel && (
         <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
           onClick={e => { if (e.target === e.currentTarget) setShowPanel(false) }}>
-          <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 390, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+          <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 390, maxHeight: 'calc(var(--app-vh, 100vh) * 0.65)', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
 
             <div style={{ padding: '18px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0', flexShrink: 0 }}>
               <div>
@@ -297,7 +300,7 @@ export default function EntMap() {
                 style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888', lineHeight: 1, padding: '0 4px' }}>✕</button>
             </div>
 
-            <div style={{ overflowY: 'auto' }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
               {navVehicles.length === 0 ? (
                 <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
                   {favoriteRoute ? `Нет данных с Навитранс для маршрута № ${favoriteRoute}` : 'Нет ТС на линии'}
@@ -361,15 +364,15 @@ export default function EntMap() {
         return (
           <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
             onClick={e => { if (e.target === e.currentTarget) setSelectedNav(null) }}>
-            <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
+            <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 430, maxHeight: 'calc(var(--app-vh, 100vh) * 0.8)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
 
-              <div style={{ padding: '18px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
+              <div style={{ padding: '18px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0', flexShrink: 0 }}>
                 <span style={{ fontWeight: 800, fontSize: 17 }}>ТС на линии</span>
                 <button onClick={() => setSelectedNav(null)}
                   style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888', lineHeight: 1, padding: '0 4px' }}>✕</button>
               </div>
 
-              <div style={{ padding: '16px 20px 0' }}>
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px 0' }}>
 
                 {/* Direction + plate + model */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 20 }}>

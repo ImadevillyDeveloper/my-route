@@ -36,9 +36,11 @@ export default function LogoLoader({ size = 72, fullPage = false }: Props) {
   if (!fullPage) return img
 
   return (
-    <div style={{
-      // bottom: var(--nav-safe) вместо inset:0 — чтобы нижнее меню оставалось
-      // видимым и кликабельным поверх лоадера, а не пряталось под ним.
+    <div className="logo-loader-fullpage" style={{
+      // bottom: var(--nav-safe) вместо inset:0 — чтобы нижнее меню (на мобильном)
+      // оставалось видимым и кликабельным поверх лоадера, а не пряталось под ним.
+      // left переопределяется в index.css на десктопе, чтобы не перекрывать
+      // боковое меню — там своя ширина вместо нижнего таб-бара.
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 'var(--nav-safe)', zIndex: 100,
       display: 'flex',
       flexDirection: 'column',
