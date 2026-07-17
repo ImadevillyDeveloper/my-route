@@ -13,7 +13,6 @@ export interface User {
   phone?: string;
   full_name: string;
   role: UserRole;
-  biometric_enabled: boolean;
   avatar_url?: string;
 }
 

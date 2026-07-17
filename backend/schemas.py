@@ -88,7 +88,6 @@ class UserOut(BaseModel):
     phone: Optional[str] = None
     full_name: str
     role: UserRole
-    biometric_enabled: bool
     avatar_url: Optional[str] = None
     vehicle_plate: Optional[str] = None
     route_number: Optional[str] = None
@@ -107,7 +106,6 @@ class UserOut(BaseModel):
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
-    biometric_enabled: Optional[bool] = None
     avatar_url: Optional[str] = None
     rival_routes_json: Optional[str] = None
     active_shift_start: Optional[str] = None

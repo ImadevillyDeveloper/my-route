@@ -14,13 +14,6 @@ const TOPICS = [
   { value: 'other',    label: '📝 Другое' },
 ]
 
-const GosuslugiLogo = () => (
-  <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
-    <path d="M24 3L42 13.5V34.5L24 45L6 34.5V13.5L24 3Z" fill="#0066CC"/>
-    <text x="24" y="32" textAnchor="middle" fill="white" fontSize="20" fontWeight="900" fontFamily="Arial">Г</text>
-  </svg>
-)
-
 const LogoutIcon = ({ size = 22, color = 'var(--orange)' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -175,20 +168,6 @@ export default function EntSettings() {
           )}
         </div>
 
-        {/* Учётная запись Госуслуги */}
-        <div className="card" style={{ padding: 0 }}>
-          <div className="row-item" style={{ cursor: 'pointer', padding: '16px' }}>
-            <span style={{ fontWeight: 700, fontSize: 15 }}>Учётная запись</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-              <GosuslugiLogo />
-              <span style={{ fontSize: 16, fontWeight: 700 }}>
-                <span style={{ color: '#0066CC' }}>гос</span><span style={{ color: '#CC0000' }}>услуги</span>
-              </span>
-            </div>
-            <span style={{ marginLeft: 'auto', color: 'var(--orange)', fontSize: 22 }}>›</span>
-          </div>
-        </div>
-
         {/* Тех.поддержка */}
         <div className="card" style={{ padding: 0 }}>
           <div className="row-item" style={{ cursor: 'pointer', padding: '16px' }} onClick={openSupport}>
@@ -322,7 +301,7 @@ export default function EntSettings() {
 
             <div style={{ fontWeight: 900, fontSize: 22, marginBottom: 10 }}>Выйти из аккаунта?</div>
             <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 26, lineHeight: 1.6 }}>
-              Чтобы войти заново, понадобится<br />код или Госуслуги.
+              Чтобы войти заново, понадобится<br />номер телефона.
             </div>
 
             <div style={{ display: 'flex', gap: 12 }}>

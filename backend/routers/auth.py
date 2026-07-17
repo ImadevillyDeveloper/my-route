@@ -62,15 +62,3 @@ def login_admin(request: schemas.AdminLoginRequest, db: Session = Depends(get_db
         user_id=user.id,
         full_name=user.full_name,
     )
-
-
-@router.post("/login/gosuslugi", response_model=schemas.TokenResponse)
-def login_gosuslugi(db: Session = Depends(get_db)):
-    user = get_or_create_demo_entrepreneur(db, "+70000000000")
-    token = create_access_token({"sub": str(user.id), "role": "entrepreneur"})
-    return schemas.TokenResponse(
-        access_token=token,
-        role="entrepreneur",
-        user_id=user.id,
-        full_name=user.full_name,
-    )

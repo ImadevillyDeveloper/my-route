@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loginDriver, loginEntrepreneur, loginGosuslugi } from '../api/client'
+import { loginDriver, loginEntrepreneur } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { formatVU } from '../utils/format'
 
@@ -21,23 +21,11 @@ function BusLogo() {
   )
 }
 
-function GosuslugiLogo() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="10.5" height="10.5" fill="#0066CC" rx="1.5"/>
-      <rect x="11.5" y="0" width="10.5" height="10.5" fill="#CC0000" rx="1.5"/>
-      <rect x="0" y="11.5" width="10.5" height="10.5" fill="#009933" rx="1.5"/>
-      <rect x="11.5" y="11.5" width="10.5" height="10.5" fill="#FF9900" rx="1.5"/>
-    </svg>
-  )
-}
-
 export default function Login() {
   const [driverVU, setDriverVU] = useState('')
   const [phone, setPhone] = useState('+7')
   const [loadingDriver, setLoadingDriver] = useState(false)
   const [loadingEnt, setLoadingEnt] = useState(false)
-  const [loadingGos, setLoadingGos] = useState(false)
   const [errorDriver, setErrorDriver] = useState('')
   const [errorEnt, setErrorEnt] = useState('')
   const navigate = useNavigate()
@@ -80,21 +68,6 @@ export default function Login() {
       navigate('/entrepreneur/dashboard', { replace: true })
     } catch { setErrorEnt('Ошибка входа') }
     finally { setLoadingEnt(false) }
-  }
-
-  const handleGosuslugi = async () => {
-    setLoadingGos(true); setErrorEnt('')
-    try {
-      const res = await loginGosuslugi()
-      const { access_token, role, user_id, full_name } = res.data
-      setAuth(access_token, role, user_id, full_name)
-    } catch {
-      // Фейковый вход: устанавливаем демо-данные предпринимателя
-      setAuth('gosuslugi_demo', 'entrepreneur', 1, 'Черепанов В.Г.')
-    } finally {
-      setLoadingGos(false)
-      navigate('/entrepreneur/map', { replace: true })
-    }
   }
 
   return (
@@ -150,22 +123,6 @@ export default function Login() {
           <button className="btn btn-primary" onClick={handleDriver} disabled={loadingDriver} style={{ borderRadius: 12, marginBottom: 8 }}>
             {loadingDriver ? 'Вход...' : 'Войти'}
           </button>
-          <button
-            onClick={() => { setDriverVU(formatVU('00 00 123456')); setTimeout(handleDriver, 100) }}
-            style={{ width: '100%', padding: '13px', background: 'white', border: '1.5px solid #E0E0E0', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', fontSize: 15, fontWeight: 600, color: '#333' }}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M12 3C9.8 3 7.8 3.9 6.4 5.4"/>
-              <path d="M17.6 5.4C16.2 3.9 14.2 3 12 3"/>
-              <path d="M4.1 9C3.4 10.2 3 11.6 3 13"/>
-              <path d="M21 13c0-1.4-.4-2.8-1.1-4"/>
-              <path d="M12 8c-2.8 0-5 2.2-5 5v1"/>
-              <path d="M17 13a5 5 0 0 0-5-5"/>
-              <path d="M12 13v5"/>
-              <path d="M9 17.5C9 19 10.3 20 12 20s3-1 3-2.5"/>
-            </svg>
-            Войти по биометрии
-          </button>
         </div>
 
         {/* Divider */}
@@ -198,34 +155,6 @@ export default function Login() {
           )}
           <button className="btn btn-primary" onClick={handleEnt} disabled={loadingEnt} style={{ borderRadius: 12, marginBottom: 10 }}>
             {loadingEnt ? 'Вход...' : 'Войти'}
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 10px' }}>
-            <div style={{ flex: 1, height: 1, background: '#E8E8E8' }} />
-            <span style={{ fontSize: 12, color: '#BBB', fontWeight: 500 }}>или</span>
-            <div style={{ flex: 1, height: 1, background: '#E8E8E8' }} />
-          </div>
-
-          <button
-            onClick={handleGosuslugi}
-            disabled={loadingGos}
-            style={{
-              width: '100%', padding: '12px 16px',
-              background: 'white', border: '1.5px solid #D0D8E4',
-              borderRadius: 12, display: 'flex', alignItems: 'center',
-              justifyContent: 'center', gap: 10,
-              cursor: loadingGos ? 'default' : 'pointer',
-              opacity: loadingGos ? 0.65 : 1,
-              transition: 'border-color 0.15s, box-shadow 0.15s',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={e => { if (!loadingGos) { (e.currentTarget as HTMLButtonElement).style.borderColor = '#1466AC'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(20,102,172,0.15)' } }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#D0D8E4'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none' }}
-          >
-            <img src="/gosuslugi-logo.svg" alt="" style={{ height: 26, width: 'auto', flexShrink: 0 }} />
-            <span style={{ color: '#1A1A1A', fontWeight: 600, fontSize: 14 }}>
-              {loadingGos ? 'Вход...' : 'Войти через Госуслуги'}
-            </span>
           </button>
         </div>
 

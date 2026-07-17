@@ -73,20 +73,6 @@ export default function DriverLogin() {
           {loading ? '⏳ Вход...' : 'Войти'}
         </button>
 
-        <div style={{ position: 'relative', textAlign: 'center' }}>
-          <div className="divider" />
-          <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'white', padding: '0 12px', color: 'var(--text-muted)', fontSize: 12 }}>
-            или
-          </span>
-        </div>
-
-        <button
-          className="btn btn-secondary"
-          style={{ gap: 8, border: '1.5px solid var(--border)' }}
-          onClick={() => setDriverId('00 00 123456')}
-        >
-          Биометрический вход (Face ID)
-        </button>
       </div>
     </div>
   )

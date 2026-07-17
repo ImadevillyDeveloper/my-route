@@ -47,9 +47,6 @@ export const loginDriver = (driver_id: string) =>
 export const loginEntrepreneur = (phone: string) =>
   api.post('/auth/login/entrepreneur', { phone });
 
-export const loginGosuslugi = () =>
-  api.post('/auth/login/gosuslugi');
-
 export const loginAdmin = (password: string) =>
   api.post('/auth/login/admin', { password });
 

@@ -36,8 +36,6 @@ def update_me(
 ):
     if update.full_name is not None:
         current_user.full_name = update.full_name
-    if update.biometric_enabled is not None:
-        current_user.biometric_enabled = update.biometric_enabled
     if update.avatar_url is not None:
         current_user.avatar_url = update.avatar_url
     if update.rival_routes_json is not None:

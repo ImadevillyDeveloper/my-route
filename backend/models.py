@@ -61,7 +61,6 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role = Column(Enum(UserRole), nullable=False)
     hashed_password = Column(String, nullable=True)
-    biometric_enabled = Column(Boolean, default=False)
     avatar_url = Column(String, nullable=True)
     vehicle_plate = Column(String, nullable=True)   # назначенное ТС (много водителей → одно ТС)
     route_number  = Column(String, nullable=True)   # назначенный маршрут (прямое поле)

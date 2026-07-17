@@ -458,7 +458,7 @@ export default function DriverSettings() {
 
             <div style={{ fontWeight: 900, fontSize: 22, marginBottom: 10 }}>Выйти из аккаунта?</div>
             <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 26, lineHeight: 1.6 }}>
-              Чтобы войти заново, понадобится<br />номер ВУ или биометрия.
+              Чтобы войти заново, понадобится<br />номер ВУ.
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <button onClick={() => setShowLogoutModal(false)}
