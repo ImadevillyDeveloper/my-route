@@ -1,89 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getVehiclesMap, getDrivers, getRivalsLive } from '../../api/client'
+import { getVehiclesMap, getDrivers, getRivalsLive, getMyVehiclesLive, getNearestStop } from '../../api/client'
 import { getRoutesWithOverrides } from '../../api/routes'
 import LogoLoader from '../../components/common/LogoLoader'
 
 declare global { interface Window { ymaps: any } }
 
 const FAV_ROUTE_KEY = 'ent_favorite_route'
-
-const ROUTE_212_STOPS: { name: string; lat: number; lng: number }[] = [
-  { name: 'СТЦ "Мега"',               lat: 54.9719, lng: 73.2857 },
-  { name: 'Садовая',                   lat: 54.9725, lng: 73.2940 },
-  { name: 'ЖК "Кристалл"',            lat: 54.9731, lng: 73.3010 },
-  { name: 'Поворотная',               lat: 54.9738, lng: 73.3080 },
-  { name: 'Ул. Дмитриева',            lat: 54.9752, lng: 73.3200 },
-  { name: '11-й микрорайон',           lat: 54.9760, lng: 73.3270 },
-  { name: 'Ул. 3-я Енисейская',       lat: 54.9775, lng: 73.3390 },
-  { name: 'Библиотека им. Пушкина',   lat: 54.9837, lng: 73.3450 },
-  { name: 'КДЦ "Маяковский"',         lat: 54.9851, lng: 73.3510 },
-  { name: 'Главпочтамт',              lat: 54.9891, lng: 73.3672 },
-  { name: 'Госпиталь',                lat: 54.9896, lng: 73.3720 },
-  { name: 'Театральная площадь',      lat: 54.9891, lng: 73.3780 },
-  { name: 'Ул. Декабристов',          lat: 54.9882, lng: 73.3830 },
-  { name: 'Городской музей',          lat: 54.9871, lng: 73.3880 },
-  { name: 'Ул. 6-я Линия',            lat: 54.9855, lng: 73.3940 },
-  { name: 'Ул. 9-я Линия',            lat: 54.9840, lng: 73.4000 },
-  { name: 'Ул. 16-я Линия',           lat: 54.9820, lng: 73.4070 },
-  { name: 'Ул. 20-я Линия',           lat: 54.9808, lng: 73.4120 },
-  { name: 'Ул. 25-я Линия',           lat: 54.9796, lng: 73.4170 },
-  { name: 'Завод им. Попова',          lat: 54.9790, lng: 73.4220 },
-  { name: 'Трамвайное кольцо',        lat: 54.9785, lng: 73.4270 },
-  { name: 'Ул. Красных Зорь',         lat: 54.9782, lng: 73.4310 },
-  { name: 'ПО "Автоматика"',          lat: 54.9778, lng: 73.4450 },
-  { name: 'Ул. Петра Осминина',       lat: 54.9778, lng: 73.4480 },
-  { name: 'Ул. 75-й Гв. бригады',     lat: 54.9778, lng: 73.4510 },
-  { name: 'Поликлиника',              lat: 54.9778, lng: 73.4545 },
-  { name: 'Ул. 50 лет ВЛКСМ',         lat: 54.9779, lng: 73.4600 },
-  { name: 'Ул. Романенко',            lat: 54.9779, lng: 73.4650 },
-  { name: 'Пос. Чкаловский',          lat: 54.9779, lng: 73.4704 },
-]
-
-const ROUTE_59_STOPS: { name: string; lat: number; lng: number }[] = [
-  { name: 'Пос. Биофабрика',          lat: 54.9941, lng: 73.4525 },
-  { name: 'Центр Пенаты',             lat: 54.9921, lng: 73.4410 },
-  { name: 'РЕЛЕРО',                   lat: 54.9910, lng: 73.4350 },
-  { name: 'Ул. 25-я Линия',           lat: 54.9890, lng: 73.4250 },
-  { name: 'Ул. 20-я Линия',           lat: 54.9874, lng: 73.4140 },
-  { name: 'Ул. 17-я Линия',           lat: 54.9860, lng: 73.4080 },
-  { name: 'Ул. 14-я Линия',           lat: 54.9845, lng: 73.4010 },
-  { name: 'Ул. 8-я Линия',            lat: 54.9830, lng: 73.3930 },
-  { name: 'Ул. 4-я Линия',            lat: 54.9818, lng: 73.3860 },
-  { name: 'Школа №65',                lat: 54.9820, lng: 73.3800 },
-  { name: 'Ул. Куйбышева',            lat: 54.9855, lng: 73.3750 },
-  { name: 'Декабристов',              lat: 54.9880, lng: 73.3820 },
-  { name: 'Театральная площадь',      lat: 54.9891, lng: 73.3780 },
-  { name: 'Дом Туриста',              lat: 54.9898, lng: 73.3760 },
-  { name: 'Госпиталь',                lat: 54.9896, lng: 73.3720 },
-  { name: 'Главпочтамт',              lat: 54.9891, lng: 73.3672 },
-  { name: 'КДЦ "Маяковский"',         lat: 54.9851, lng: 73.3510 },
-  { name: 'Библиотека им. Пушкина',   lat: 54.9837, lng: 73.3450 },
-  { name: 'Ул. Рабиновича',           lat: 54.9950, lng: 73.3480 },
-  { name: 'Сибзавод',                 lat: 55.0050, lng: 73.3350 },
-  { name: 'Городок Водников',         lat: 55.0130, lng: 73.3250 },
-  { name: 'Старозагородная Роща',     lat: 55.0200, lng: 73.3150 },
-  { name: 'Дворец творчества',        lat: 55.0260, lng: 73.3050 },
-  { name: 'Аграрный университет',     lat: 55.0320, lng: 73.2960 },
-  { name: 'Телецентр',                lat: 55.0380, lng: 73.2870 },
-  { name: 'СибАДИ',                   lat: 55.0430, lng: 73.2800 },
-  { name: 'Медицинская академия',     lat: 55.0470, lng: 73.2760 },
-  { name: 'Технический университет',  lat: 55.0500, lng: 73.2730 },
-  { name: 'ДК Химик',                 lat: 55.0560, lng: 73.2640 },
-  { name: 'ДК Звёздный',              lat: 55.0590, lng: 73.2550 },
-  { name: 'Пл. Лицкевича',            lat: 55.0605, lng: 73.2515 },
-  { name: 'ПАТП-7',                   lat: 55.0610, lng: 73.2505 },
-  { name: 'Поликлиника (пр. Губкина)',lat: 55.0613, lng: 73.2502 },
-  { name: 'Омский НПЗ',               lat: 55.0615, lng: 73.2500 },
-]
-
-const ROUTE_STOPS: Record<string, { name: string; lat: number; lng: number }[]> = {
-  '212': ROUTE_212_STOPS,
-  '59':  ROUTE_59_STOPS,
-}
-
-const getRouteStops = (routeNumber: string | null) =>
-  ROUTE_STOPS[routeNumber ?? ''] ?? ROUTE_212_STOPS
 
 const DIR_PALETTE = [
   'islands#blueCircleDotIcon',
@@ -99,17 +22,6 @@ const abbreviateName = (name: string): string => {
   if (alreadyShort) return name
   const initials = parts.slice(1).map(p => p[0]?.toUpperCase() + '.').join('')
   return `${parts[0]} ${initials}`
-}
-
-const getNearestStop = (lat: number, lng: number, routeNumber: string | null): string => {
-  const stops = getRouteStops(routeNumber)
-  let minDist = Infinity
-  let nearest = stops[0].name
-  for (const stop of stops) {
-    const d = Math.sqrt((stop.lat - lat) ** 2 + (stop.lng - lng) ** 2)
-    if (d < minDist) { minDist = d; nearest = stop.name }
-  }
-  return nearest
 }
 
 interface RouteInfo { number: string; name: string; start_point: string; end_point: string }
@@ -139,11 +51,10 @@ export default function EntMap() {
   const [routeDropOpen, setRouteDropOpen]   = useState(false)
   const [routeDropPos, setRouteDropPos]     = useState({ top: 0, right: 0, width: 0 })
   const [selectedNav, setSelectedNav]     = useState<NavVehicle | null>(null)
-  const [selectedLocal, setSelectedLocal] = useState<LocalVehicle | null>(null)
+  const [nearestStopName, setNearestStopName] = useState<string | null>(null)
   const [mapReady, setMapReady]           = useState(false)
   const mapRef          = useRef<HTMLDivElement>(null)
   const ymapRef         = useRef<any>(null)
-  const polylineRef     = useRef<any>(null)
   const markersRef      = useRef<any[]>([])
   const routeBadgeRef   = useRef<HTMLDivElement>(null)
   const navigate        = useNavigate()
@@ -176,11 +87,12 @@ export default function EntMap() {
 
   useEffect(() => { getRoutesWithOverrides().then(setRoutes).catch(() => {}) }, [])
 
-  // Poll Navitrans for the selected route
+  // Живые позиции ТС: с избранным маршрутом — данные Навитранса по этому
+  // маршруту; без него — ВСЕ ТС предпринимателя (Навитранс + GPS-фолбэк для
+  // водителей с открытой сменой), реальные данные в обоих случаях.
   useEffect(() => {
-    if (!favoriteRoute) { setNavVehicles([]); setNavLoaded(false); return }
     setNavLoaded(false)
-    const fetch = () => getRivalsLive([favoriteRoute])
+    const fetch = () => (favoriteRoute ? getRivalsLive([favoriteRoute]) : getMyVehiclesLive())
       .then(r => { setNavVehicles(r.data); setNavLoaded(true) })
       .catch(() => { setNavLoaded(true) })
     fetch()
@@ -215,74 +127,48 @@ export default function EntMap() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Route polyline — only changes when favoriteRoute changes
-  useEffect(() => {
-    if (!ymapRef.current) return
-    if (polylineRef.current) {
-      ymapRef.current.geoObjects.remove(polylineRef.current)
-      polylineRef.current = null
-    }
-    const stops = getRouteStops(favoriteRoute || null)
-    if (stops.length > 1) {
-      const pl = new window.ymaps.Polyline(
-        stops.map(s => [s.lat, s.lng]), {},
-        { strokeColor: '#FF6600', strokeWidth: 3, strokeOpacity: 0.55 }
-      )
-      ymapRef.current.geoObjects.add(pl)
-      polylineRef.current = pl
-      const lats = stops.map(s => s.lat)
-      const lngs = stops.map(s => s.lng)
-      ymapRef.current.setCenter(
-        [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lngs) + Math.max(...lngs)) / 2], 12
-      )
-    }
-  }, [mapReady, favoriteRoute])
-
-  // Vehicle markers — separate from polyline
+  // Маркеры ТС — реальные позиции (Навитранс/ГЛОНАСС + GPS-фолбэк), без
+  // придуманных полилиний маршрута: на реальной карте они всё равно не
+  // совпадали с фактической трассой движения.
   useEffect(() => {
     if (!ymapRef.current) return
     markersRef.current.forEach(m => ymapRef.current.geoObjects.remove(m))
     markersRef.current = []
 
-    if (favoriteRoute) {
-      // Map unique directions → stable colours (туда = blue, обратно = green, …)
-      const uniqueDirsNow = [...new Set(navVehicles.map(v => v.direction || '').filter(Boolean))]
-      const dirToPreset: Record<string, string> = {}
-      uniqueDirsNow.forEach((d, i) => { dirToPreset[d] = DIR_PALETTE[i] ?? 'islands#greyCircleDotIcon' })
+    // Map unique directions → stable colours (туда = blue, обратно = green, …)
+    const uniqueDirsNow = [...new Set(navVehicles.map(v => v.direction || '').filter(Boolean))]
+    const dirToPreset: Record<string, string> = {}
+    uniqueDirsNow.forEach((d, i) => { dirToPreset[d] = DIR_PALETTE[i] ?? 'islands#greyCircleDotIcon' })
 
-      navVehicles.forEach(v => {
-        const isGps = v.source === 'gps'
-        const preset = isGps ? 'islands#greyStretchyIcon' : (dirToPreset[v.direction || ''] ?? 'islands#greyCircleDotIcon')
-        const balloon = [
-          `<b>Маршрут №${v.route_number ?? '—'}</b>`,
-          v.direction ? `<span style="color:#888">${v.direction}</span>` : '',
-          v.plate_number ? `Гос. номер: <b>${v.plate_number}</b>` : '',
-          `Скорость: <b>${v.speed.toFixed(0)} км/ч</b>`,
-          isGps ? `<span style="color:#FF6600">📡 Нет данных Навитранс — GPS водителя</span>` : '',
-        ].filter(Boolean).join('<br/>')
-        const m = new window.ymaps.Placemark(
-          [v.lat, v.lng],
-          { balloonContent: balloon, hintContent: v.plate_number || '?', iconContent: isGps ? (v.plate_number || '') : undefined },
-          { preset }
-        )
-        m.events.add('click', () => setSelectedNav(v))
-        ymapRef.current.geoObjects.add(m)
-        markersRef.current.push(m)
-      })
-    } else {
-      // Fallback: show local DB vehicles
-      const localOnLine = allVehicles.filter(v => allDrivers.some((d: any) => d.plate_number === v.plate_number))
-      localOnLine.forEach(v => {
-        const stops = getRouteStops(v.route_number)
-        const stop = stops[(v.id * 3) % stops.length]
-        const preset = v.status === 'on_route' ? 'islands#greenCircleDotIcon' : v.status === 'repair' ? 'islands#redCircleDotIcon' : 'islands#greyCircleDotIcon'
-        const m = new window.ymaps.Placemark([v.lat ?? stop.lat, v.lng ?? stop.lng], {}, { preset })
-        m.events.add('click', () => setSelectedLocal(v))
-        ymapRef.current.geoObjects.add(m)
-        markersRef.current.push(m)
-      })
-    }
-  }, [navVehicles, allVehicles, allDrivers, favoriteRoute, mapReady])
+    navVehicles.forEach(v => {
+      const isGps = v.source === 'gps'
+      const preset = isGps ? 'islands#greyStretchyIcon' : (dirToPreset[v.direction || ''] ?? 'islands#greyCircleDotIcon')
+      const balloon = [
+        `<b>Маршрут №${v.route_number ?? '—'}</b>`,
+        v.direction ? `<span style="color:#888">${v.direction}</span>` : '',
+        v.plate_number ? `Гос. номер: <b>${v.plate_number}</b>` : '',
+        `Скорость: <b>${v.speed.toFixed(0)} км/ч</b>`,
+        isGps ? `<span style="color:#FF6600">📡 Нет данных Навитранс — GPS водителя</span>` : '',
+      ].filter(Boolean).join('<br/>')
+      const m = new window.ymaps.Placemark(
+        [v.lat, v.lng],
+        { balloonContent: balloon, hintContent: v.plate_number || '?', iconContent: isGps ? (v.plate_number || '') : undefined },
+        { preset }
+      )
+      m.events.add('click', () => setSelectedNav(v))
+      ymapRef.current.geoObjects.add(m)
+      markersRef.current.push(m)
+    })
+  }, [navVehicles, mapReady])
+
+  // Реальное ближайшее место (по данным Навитранса) для карточки выбранного ТС
+  useEffect(() => {
+    if (!selectedNav || !selectedNav.route_number) { setNearestStopName(null); return }
+    setNearestStopName(null)
+    getNearestStop(selectedNav.route_number, selectedNav.lat, selectedNav.lng)
+      .then(res => setNearestStopName(res.data.name ?? null))
+      .catch(() => setNearestStopName(null))
+  }, [selectedNav])
 
   // Plate-based lookups in local DB
   const findLocalVehicle = (plate?: string | null): LocalVehicle | undefined =>
@@ -321,12 +207,7 @@ export default function EntMap() {
 
   const getDotColor = (dir: string) => uniqueDirs.indexOf(dir) === 0 ? '#007AFF' : '#34C759'
 
-  const localOnLine = allVehicles.filter(v => allDrivers.some((d: any) => d.plate_number === v.plate_number))
-  const onLineCount = favoriteRoute ? navVehicles.length : localOnLine.length
-
-  // For local fallback bottom bar
-  const toForwardLocal = Math.ceil(localOnLine.length / 2)
-  const toBackLocal    = localOnLine.length - toForwardLocal
+  const onLineCount = navVehicles.length
 
   return (
     <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, height: 'var(--app-vh, 100dvh)', overflow: 'hidden' }}>
@@ -379,24 +260,19 @@ export default function EntMap() {
               <span style={{ fontSize: 13, fontWeight: 600 }}>ТС на линии:</span>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--orange)' }}>{onLineCount}</span>
             </div>
-            {favoriteRoute && dirEntries.length > 0 ? (
+            {dirEntries.length > 0 ? (
               <div style={{ display: 'flex', gap: 12 }}>
                 {dirEntries.slice(0, 2).map(([dir, cnt]) => {
                   const dest = dir.split(' → ')[1] || dir
                   return <span key={dir} style={{ fontSize: 12, color: 'var(--text-muted)' }}>→ {dest} <strong style={{ color: 'var(--text-primary)' }}>{cnt}</strong></span>
                 })}
               </div>
-            ) : favoriteRoute && !navLoaded ? (
+            ) : !navLoaded ? (
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>загрузка данных...</span>
-            ) : favoriteRoute && navLoaded ? (
+            ) : favoriteRoute ? (
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>нет ТС на маршруте № {favoriteRoute}</span>
-            ) : favInfo ? (
-              <div style={{ display: 'flex', gap: 12 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>→ {favInfo.end_point} <strong style={{ color: 'var(--text-primary)' }}>{toForwardLocal}</strong></span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>→ {favInfo.start_point} <strong style={{ color: 'var(--text-primary)' }}>{toBackLocal}</strong></span>
-              </div>
             ) : (
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>все маршруты</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>нет ТС на линии</span>
             )}
           </div>
           <button onClick={() => setShowPanel(true)}
@@ -422,84 +298,50 @@ export default function EntMap() {
             </div>
 
             <div style={{ overflowY: 'auto' }}>
-              {favoriteRoute ? (
-                navVehicles.length === 0 ? (
-                  <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
-                    Нет данных с Навитранс для маршрута № {favoriteRoute}
-                  </div>
-                ) : (
-                  navVehicles.map((v, i) => {
-                    const plate      = v.plate_number || `ТС ${i + 1}`
-                    const driver     = findLocalDriver(v.plate_number)
-                    const driverName = driver ? abbreviateName(driver.full_name) : null
-                    const isGps      = v.source === 'gps'
-                    const dot        = isGps ? '#999999' : getDotColor(v.direction)
-                    return (
-                      <div key={`${v.unit_id ?? ''}-${i}`}
-                        onClick={() => { setSelectedNav(v); setShowPanel(false) }}
-                        style={{ padding: '13px 20px', borderBottom: i < navVehicles.length - 1 ? '1px solid #F5F5F5' : 'none', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-
-                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
-
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, color: 'var(--orange)', fontWeight: 600, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.direction}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontWeight: 800, color: 'var(--orange)', fontSize: 16, letterSpacing: 0.3 }}>{plate}</span>
-                            {driverName
-                              ? <span style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 600 }}>{driverName}</span>
-                              : <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>—</span>
-                            }
-                            {isGps && (
-                              <span style={{ fontSize: 10, fontWeight: 800, color: '#888', background: '#EFEFEF', borderRadius: 6, padding: '2px 6px', letterSpacing: 0.3 }}>GPS</span>
-                            )}
-                          </div>
-                          {isGps
-                            ? <div style={{ fontSize: 12, color: '#FF6600', marginTop: 2 }}>📡 нет данных Навитранс · {v.speed.toFixed(0)} км/ч</div>
-                            : v.model && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{v.model} · {v.speed.toFixed(0)} км/ч</div>
-                          }
-                        </div>
-
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CCCCCC" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6"/></svg>
-                      </div>
-                    )
-                  })
-                )
+              {navVehicles.length === 0 ? (
+                <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+                  {favoriteRoute ? `Нет данных с Навитранс для маршрута № ${favoriteRoute}` : 'Нет ТС на линии'}
+                </div>
               ) : (
-                // Fallback: local DB vehicles
-                localOnLine.length === 0 ? (
-                  <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
-                    Нет ТС на линии
-                  </div>
-                ) : (
-                  localOnLine.map((v, i) => {
-                    const driver     = allDrivers.find((d: any) => d.plate_number === v.plate_number)
-                    const driverName = driver ? abbreviateName(driver.full_name) : 'Водитель'
-                    const forward    = i % 2 === 0
-                    const dot        = forward ? '#007AFF' : '#34C759'
-                    const label      = favInfo
-                      ? (forward ? `${favInfo.start_point} → ${favInfo.end_point}` : `${favInfo.end_point} → ${favInfo.start_point}`)
-                      : `Маршрут № ${v.route_number ?? '—'}`
-                    return (
-                      <div key={v.id}
-                        onClick={() => { setSelectedLocal(v); setShowPanel(false) }}
-                        style={{ padding: '13px 20px', borderBottom: i < localOnLine.length - 1 ? '1px solid #F5F5F5' : 'none', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, color: 'var(--orange)', fontWeight: 600, marginBottom: 3 }}>{label}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontWeight: 800, color: 'var(--orange)', fontSize: 16 }}>{v.plate_number}</span>
-                            <span style={{ fontSize: 14, fontWeight: 600 }}>{driverName}</span>
-                          </div>
+                navVehicles.map((v, i) => {
+                  const plate      = v.plate_number || `ТС ${i + 1}`
+                  const driver     = findLocalDriver(v.plate_number)
+                  const driverName = driver ? abbreviateName(driver.full_name) : null
+                  const isGps      = v.source === 'gps'
+                  const dot        = isGps ? '#999999' : getDotColor(v.direction)
+                  return (
+                    <div key={`${v.unit_id ?? ''}-${i}`}
+                      onClick={() => { setSelectedNav(v); setShowPanel(false) }}
+                      style={{ padding: '13px 20px', borderBottom: i < navVehicles.length - 1 ? '1px solid #F5F5F5' : 'none', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: 'var(--orange)', fontWeight: 600, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {favoriteRoute ? v.direction : `№${v.route_number ?? '—'} · ${v.direction}`}
                         </div>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CCCCCC" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6"/></svg>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontWeight: 800, color: 'var(--orange)', fontSize: 16, letterSpacing: 0.3 }}>{plate}</span>
+                          {driverName
+                            ? <span style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 600 }}>{driverName}</span>
+                            : <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>—</span>
+                          }
+                          {isGps && (
+                            <span style={{ fontSize: 10, fontWeight: 800, color: '#888', background: '#EFEFEF', borderRadius: 6, padding: '2px 6px', letterSpacing: 0.3 }}>GPS</span>
+                          )}
+                        </div>
+                        {isGps
+                          ? <div style={{ fontSize: 12, color: '#FF6600', marginTop: 2 }}>📡 нет данных Навитранс · {v.speed.toFixed(0)} км/ч</div>
+                          : v.model && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{v.model} · {v.speed.toFixed(0)} км/ч</div>
+                        }
                       </div>
-                    )
-                  })
-                )
+
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CCCCCC" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6"/></svg>
+                    </div>
+                  )
+                })
               )}
             </div>
           </div>
@@ -513,7 +355,6 @@ export default function EntMap() {
         const driver     = findLocalDriver(v.plate_number)
         const driverName = driver ? abbreviateName(driver.full_name) : null
         const localVeh   = findLocalVehicle(v.plate_number)
-        const nearestStop = getNearestStop(v.lat, v.lng, v.route_number ?? favoriteRoute)
         const isGps      = v.source === 'gps'
         const dot        = isGps ? '#999999' : getDotColor(v.direction)
 
@@ -559,7 +400,7 @@ export default function EntMap() {
                     </div>
                     <div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>Текущее местоположение</div>
-                      <div style={{ fontWeight: 700, fontSize: 15 }}>{nearestStop}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>{nearestStopName ?? '…'}</div>
                     </div>
                   </div>
 
@@ -601,86 +442,6 @@ export default function EntMap() {
                     onClick={() => { if (driver) { setSelectedNav(null); navigate(`/entrepreneur/drivers/${driver.id}`) } }}
                     disabled={!driver}
                     style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: 'none', background: driver ? 'var(--orange)' : '#E0E0E0', color: 'white', fontWeight: 700, fontSize: 14, cursor: driver ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    Водитель
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* ── Detail sheet: локальное ТС (fallback, нет избранного маршрута) ── */}
-      {selectedLocal && (() => {
-        const v          = selectedLocal
-        const idx        = localOnLine.findIndex(x => x.id === v.id)
-        const forward    = idx % 2 === 0
-        const dot        = forward ? '#007AFF' : '#34C759'
-        const label      = favInfo
-          ? (forward ? `${favInfo.start_point} → ${favInfo.end_point}` : `${favInfo.end_point} → ${favInfo.start_point}`)
-          : `Маршрут № ${v.route_number ?? '—'}`
-        const driverObj  = allDrivers.find((d: any) => d.plate_number === v.plate_number)
-        const driverName = driverObj ? abbreviateName(driverObj.full_name) : 'Водитель'
-        const stops      = getRouteStops(v.route_number)
-        const stop       = stops[(v.id * 3) % stops.length].name
-        const h = 7 + (v.id % 5)
-        const m = (v.id * 13) % 60
-        const departure  = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-
-        return (
-          <div className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
-            onClick={e => { if (e.target === e.currentTarget) setSelectedLocal(null) }}>
-            <div style={{ background: 'white', borderRadius: 24, width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}>
-
-              <div style={{ padding: '18px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F0F0F0' }}>
-                <span style={{ fontWeight: 800, fontSize: 17 }}>ТС на линии</span>
-                <button onClick={() => setSelectedLocal(null)}
-                  style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888', lineHeight: 1, padding: '0 4px' }}>✕</button>
-              </div>
-
-              <div style={{ padding: '16px 20px 0' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 20 }}>
-                  <div style={{ width: 12, height: 12, borderRadius: '50%', background: dot, flexShrink: 0, marginTop: 4 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: 'var(--orange)', fontWeight: 600, marginBottom: 6 }}>{label}</div>
-                    <div style={{ fontWeight: 900, fontSize: 24, color: 'var(--orange)', letterSpacing: 0.5, marginBottom: 2 }}>{v.plate_number}</div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{driverName}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 0, background: '#F8F8F8', borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderBottom: '1px solid #EEEEEE' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>Текущее местоположение</div>
-                      <div style={{ fontWeight: 700, fontSize: 15 }}>{stop}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>Время выезда</div>
-                      <div style={{ fontWeight: 700, fontSize: 15 }}>{departure}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 10, paddingBottom: 20 }}>
-                  <button
-                    onClick={() => { setSelectedLocal(null); navigate(`/entrepreneur/vehicles/${v.id}`) }}
-                    style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: '2px solid var(--orange)', background: 'white', color: 'var(--orange)', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <img src="/bus.png" width="16" height="16" />
-                    Карточка ТС
-                  </button>
-                  <button
-                    onClick={() => { setSelectedLocal(null); if (driverObj) navigate(`/entrepreneur/drivers/${driverObj.id}`) }}
-                    disabled={!driverObj}
-                    style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: 'none', background: driverObj ? 'var(--orange)' : '#E0E0E0', color: 'white', fontWeight: 700, fontSize: 14, cursor: driverObj ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                     Водитель
                   </button>

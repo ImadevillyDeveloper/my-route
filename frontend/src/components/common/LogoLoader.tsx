@@ -37,7 +37,9 @@ export default function LogoLoader({ size = 72, fullPage = false }: Props) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 500,
+      // bottom: var(--nav-safe) вместо inset:0 — чтобы нижнее меню оставалось
+      // видимым и кликабельным поверх лоадера, а не пряталось под ним.
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 'var(--nav-safe)', zIndex: 100,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',

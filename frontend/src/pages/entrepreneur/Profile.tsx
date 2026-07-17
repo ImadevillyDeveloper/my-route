@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../store/auth'
 import { getMe, uploadMyPhoto, resolveAssetUrl } from '../../api/client'
+import LogoLoader from '../../components/common/LogoLoader'
 
 const TILES = [
   { icon: <img src="/bus.png" width="28" height="28" />, title: 'Мои ТС', sub: 'Страховки и техосмотры', to: '/entrepreneur/vehicles' },
@@ -12,18 +12,18 @@ const TILES = [
 
 export default function EntProfile() {
   const navigate = useNavigate()
-  const storedName = useAuthStore(s => s.fullName)
-  const { token, role, userId } = useAuthStore(s => ({ token: s.token, role: s.role, userId: s.userId }))
 
   const [showPartner, setShowPartner] = useState(false)
   const fireRef = useRef<HTMLButtonElement>(null)
   const [avatar, setAvatar] = useState<string | null>(null)
+  const [fullName, setFullName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     getMe().then(r => {
       if (r.data.avatar_url) setAvatar(resolveAssetUrl(r.data.avatar_url))
-    }).catch(() => {})
+      setFullName(r.data.full_name || '')
+    }).catch(() => setFullName(''))
   }, [])
 
   const handleAvatarClick = () => fileInputRef.current?.click()
@@ -44,13 +44,14 @@ export default function EntProfile() {
     e.target.value = ''
   }
 
-  const displayName = storedName ?? 'Черепанов В.Г.'
+  if (fullName === null) return <div className="page"><LogoLoader fullPage /></div>
 
   const shortName = (() => {
-    const parts = displayName.trim().split(/\s+/)
+    const parts = fullName.trim().split(/\s+/)
+    if (!fullName.trim()) return ''
     if (parts.length >= 3) return `${parts[0]} ${parts[1][0]}.${parts[2][0]}.`
     if (parts.length === 2) return `${parts[0]} ${parts[1][0]}.`
-    return displayName
+    return fullName
   })()
 
   return (

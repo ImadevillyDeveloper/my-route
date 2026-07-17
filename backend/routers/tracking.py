@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from .. import models, schemas
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_entrepreneur
 from ..database import get_db
 
 try:
@@ -655,6 +655,97 @@ def get_rivals_live(
             status="active",
             source="gps",
         ))
+
+    return result
+
+
+@router.get("/my-vehicles/live", response_model=list[schemas.RivalOut])
+def get_my_vehicles_live(
+    current_user: models.User = Depends(get_current_entrepreneur),
+    db: Session = Depends(get_db),
+):
+    """Реальные позиции ВСЕХ ТС предпринимателя (для карты, пока не выбран
+    избранный маршрут): сначала данные Навитранса (ГЛОНАСС) по совпадению
+    гос.номера, для непойманных там — GPS водителя, если у него открыта смена
+    именно на этом ТС. Никаких вымышленных/случайных координат или времени —
+    ТС, для которого нет ни того ни другого, просто не попадает в список."""
+    vehicles = db.query(models.Vehicle).filter(
+        models.Vehicle.owner_id == current_user.id,
+        models.Vehicle.plate_number.isnot(None),
+    ).all()
+    if not vehicles:
+        return []
+    my_plates = {v.plate_number for v in vehicles}
+
+    all_units = _get_cached_units()
+    result: list[schemas.RivalOut] = []
+    matched_plates: set[str] = set()
+
+    for i, u in enumerate(all_units):
+        plate = str(u.get("u_statenum", "") or "").strip()
+        if plate not in my_plates or plate in matched_plates:
+            continue
+        lat = float(u.get("u_lat", 0) or 0)
+        lng = float(u.get("u_long", 0) or 0)
+        if not lat or not lng:
+            continue
+        first = u.get("rl_firststation_title") or "?"
+        last  = u.get("rl_laststation_title") or "?"
+        result.append(schemas.RivalOut(
+            id=i + 1,
+            unit_id=str(u.get("u_id", i + 1)),
+            lat=lat,
+            lng=lng,
+            speed=float(u.get("u_speed", 0) or 0),
+            direction=f"{first} → {last}",
+            route_number=str(u.get("mr_num", "")) or None,
+            plate_number=plate,
+            model=str(u.get("u_model", "") or "") or None,
+            status="active" if str(u.get("u_inv", "0")) == "1" else "inactive",
+        ))
+        matched_plates.add(plate)
+
+    # GPS-фолбэк для ТС, не найденных в Навитрансе — только если на нём прямо
+    # сейчас открыта смена (постоянное ТС водителя или подмена на эту смену).
+    remaining = my_plates - matched_plates
+    if remaining:
+        gps_drivers = db.query(models.User).filter(
+            models.User.role == models.UserRole.driver,
+            models.User.owner_id == current_user.id,
+            models.User.active_shift_start.isnot(None),
+            models.User.gps_updated_at.isnot(None),
+        ).all()
+        now = datetime.now(timezone.utc)
+        for d in gps_drivers:
+            plate = (d.active_shift_vehicle_plate or d.vehicle_plate or "").strip()
+            if plate not in remaining:
+                continue
+            if (now - d.gps_updated_at).total_seconds() > GPS_STALE_S:
+                continue  # GPS слишком старый — не показываем "призрак"
+
+            route = db.query(models.Route).filter(models.Route.number == d.route_number).first() if d.route_number else None
+            if route:
+                direction = (
+                    f"{route.end_point} → {route.start_point}" if d.active_direction == "back"
+                    else f"{route.start_point} → {route.end_point}"
+                )
+            else:
+                direction = f"Маршрут {d.route_number}" if d.route_number else "—"
+
+            result.append(schemas.RivalOut(
+                id=len(result) + 1,
+                unit_id=f"driver-{d.id}",
+                lat=d.gps_lat,
+                lng=d.gps_lng,
+                speed=d.gps_speed or 0.0,
+                direction=direction,
+                route_number=d.route_number,
+                plate_number=plate,
+                model=None,
+                status="active",
+                source="gps",
+            ))
+            matched_plates.add(plate)
 
     return result
 

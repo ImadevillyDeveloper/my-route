@@ -1766,7 +1766,7 @@ export default function ChatScreen() {
       </div>
 
       {!loadedList ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><LogoLoader size={48} /></div>
+        <LogoLoader fullPage />
       ) : conversations.length === 0 ? (
         <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, padding: '40px 20px' }}>
           Чаты пока недоступны
