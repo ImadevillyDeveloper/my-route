@@ -108,7 +108,7 @@ export default function EntProfile() {
             </div>
             <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{sub}</div>
-            <div style={{ color: 'var(--orange)', fontSize: 20, marginTop: 2 }}>›</div>
+            <div style={{ color: 'var(--orange)', fontSize: 20, marginTop: 'auto', paddingTop: 2 }}>›</div>
           </div>
         ))}
       </div>
