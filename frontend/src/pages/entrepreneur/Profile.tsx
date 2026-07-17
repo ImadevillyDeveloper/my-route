@@ -89,7 +89,20 @@ export default function EntProfile() {
                 <>
                   <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowPartner(false)} />
                   <div style={{ position: 'absolute', top: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 100, filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.18))' }}>
-                    <img src="/partner-badge.png" alt="Партнёр проекта" style={{ width: 220, borderRadius: 12, display: 'block' }} />
+                    <div style={{
+                      width: 230,
+                      padding: '14px 16px',
+                      borderRadius: 12,
+                      background: 'linear-gradient(135deg, #FFF1F6 0%, #F1EEFF 100%)',
+                      textAlign: 'left',
+                    }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.3 }}>
+                        <span style={{ color: 'var(--orange)' }}>Вы</span> - партнёр проекта! ❤️
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                        Партнёры участвуют в разработке нового функционала и имеют доступ к версиям, адаптированным специально для их предприятий!
+                      </div>
+                    </div>
                   </div>
                 </>
               )}
