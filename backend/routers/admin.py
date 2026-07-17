@@ -21,6 +21,7 @@ def _entrepreneur_out(u: models.User, db: Session) -> schemas.EntrepreneurAdminO
         created_at=u.created_at,
         vehicles_count=vehicles_count,
         drivers_count=drivers_count,
+        is_partner=bool(u.is_partner),
     )
 
 
@@ -54,6 +55,24 @@ def create_entrepreneur(
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "ИП с таким номером телефона уже существует")
+    db.refresh(user)
+    return _entrepreneur_out(user, db)
+
+
+@router.put("/entrepreneurs/{entrepreneur_id}/partner", response_model=schemas.EntrepreneurAdminOut)
+def set_entrepreneur_partner(
+    entrepreneur_id: int,
+    body: schemas.EntrepreneurPartnerUpdate,
+    current_admin: models.User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(models.User).filter(
+        models.User.id == entrepreneur_id, models.User.role == models.UserRole.entrepreneur
+    ).first()
+    if not user:
+        raise HTTPException(404, "ИП не найден")
+    user.is_partner = body.is_partner
+    db.commit()
     db.refresh(user)
     return _entrepreneur_out(user, db)
 

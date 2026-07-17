@@ -14,6 +14,7 @@ export interface User {
   full_name: string;
   role: UserRole;
   avatar_url?: string;
+  is_partner?: boolean;
 }
 
 export interface Route {

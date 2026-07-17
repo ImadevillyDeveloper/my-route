@@ -99,6 +99,7 @@ class UserOut(BaseModel):
     active_trip_id: Optional[int] = None
     terminal_stops_json: Optional[str] = None
     active_shift_vehicle_plate: Optional[str] = None
+    is_partner: bool = False
 
     class Config:
         from_attributes = True
@@ -126,11 +127,16 @@ class EntrepreneurAdminOut(BaseModel):
     created_at: datetime
     vehicles_count: int = 0
     drivers_count: int = 0
+    is_partner: bool = False
 
 
 class EntrepreneurAdminCreate(BaseModel):
     full_name: str
     phone: str
+
+
+class EntrepreneurPartnerUpdate(BaseModel):
+    is_partner: bool
 
 
 # Tracking

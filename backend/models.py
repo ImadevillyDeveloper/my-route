@@ -76,6 +76,7 @@ class User(Base):
     active_trip_id      = Column(Integer, nullable=True)  # id открытого сейчас "рейса" (Trip.id), переживает перезагрузку страницы
     terminal_stops_json = Column(Text, nullable=True)     # {"<конечная>": {"stop_name","lat","lng"}, ...} — личная настройка остановки-ориентира на конечной
     active_shift_vehicle_plate = Column(String, nullable=True)  # ТС выбранное водителем ТОЛЬКО на текущую смену (не меняет постоянное vehicle_plate)
+    is_partner = Column(Boolean, default=False, nullable=True)  # метка "партнёр проекта" — назначается только админом
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(UTCDateTime, server_default=func.now())
     last_seen_at = Column(UTCDateTime, nullable=True)  # обновляется при каждом запросе (throttled)

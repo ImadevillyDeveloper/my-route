@@ -59,12 +59,15 @@ export interface AdminEntrepreneur {
   created_at: string
   vehicles_count: number
   drivers_count: number
+  is_partner: boolean
 }
 export const getAdminEntrepreneurs = () => api.get<AdminEntrepreneur[]>('/admin/entrepreneurs')
 export const createAdminEntrepreneur = (full_name: string, phone: string) =>
   api.post<AdminEntrepreneur>('/admin/entrepreneurs', { full_name, phone })
 export const deleteAdminEntrepreneur = (id: number) =>
   api.delete(`/admin/entrepreneurs/${id}`)
+export const setAdminEntrepreneurPartner = (id: number, is_partner: boolean) =>
+  api.put<AdminEntrepreneur>(`/admin/entrepreneurs/${id}/partner`, { is_partner })
 
 // Users
 export const getMe = () => api.get('/users/me');

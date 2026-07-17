@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/auth'
-import { loginAdmin, getAdminEntrepreneurs, createAdminEntrepreneur, deleteAdminEntrepreneur, resolveAssetUrl, type AdminEntrepreneur } from '../../api/client'
+import { loginAdmin, getAdminEntrepreneurs, createAdminEntrepreneur, deleteAdminEntrepreneur, setAdminEntrepreneurPartner, resolveAssetUrl, type AdminEntrepreneur } from '../../api/client'
 import { formatPhone, capitalizeName } from '../../utils/format'
 import LogoLoader from '../../components/common/LogoLoader'
 
@@ -172,6 +172,14 @@ function AdminEntrepreneurs() {
     !q || e.full_name.toLowerCase().includes(q) || (e.phone ?? '').toLowerCase().includes(q)
   )
 
+  const togglePartner = (e: AdminEntrepreneur) => {
+    const next = !e.is_partner
+    setList(list.map(x => x.id === e.id ? { ...x, is_partner: next } : x))
+    setAdminEntrepreneurPartner(e.id, next).catch(() => {
+      setList(list.map(x => x.id === e.id ? { ...x, is_partner: e.is_partner } : x))
+    })
+  }
+
   return (
     <div style={{ minHeight: '100dvh', background: '#F2F2F2', display: 'flex', flexDirection: 'column' }}>
       <div style={{ background: '#1A1A1A', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -216,6 +224,10 @@ function AdminEntrepreneurs() {
                 {e.phone ?? '—'} · {e.vehicles_count} ТС · {e.drivers_count} водит.
               </div>
             </div>
+            <button onClick={() => togglePartner(e)} title={e.is_partner ? 'Убрать метку "партнёр проекта"' : 'Назначить "партнёром проекта"'}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, opacity: e.is_partner ? 1 : 0.25, filter: e.is_partner ? 'none' : 'grayscale(1)' }}>
+              <img src="/fire.png" alt="partner" style={{ width: 20, height: 20, display: 'block' }} />
+            </button>
             <button onClick={() => setToDelete(e)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: '#FF3B30' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>

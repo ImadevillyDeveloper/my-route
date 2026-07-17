@@ -17,12 +17,14 @@ export default function EntProfile() {
   const fireRef = useRef<HTMLButtonElement>(null)
   const [avatar, setAvatar] = useState<string | null>(null)
   const [fullName, setFullName] = useState<string | null>(null)
+  const [isPartner, setIsPartner] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     getMe().then(r => {
       if (r.data.avatar_url) setAvatar(resolveAssetUrl(r.data.avatar_url))
       setFullName(r.data.full_name || '')
+      setIsPartner(!!r.data.is_partner)
     }).catch(() => setFullName(''))
   }, [])
 
@@ -80,7 +82,7 @@ export default function EntProfile() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', display: 'flex', alignItems: 'center', gap: 6 }}>
             ИП {shortName}
-            <div style={{ position: 'relative', display: 'inline-flex' }}>
+            {isPartner && <div style={{ position: 'relative', display: 'inline-flex' }}>
               <button ref={fireRef} onClick={togglePartner}
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', lineHeight: 0, display: 'flex', alignItems: 'center' }}>
                 <img src="/fire.png" alt="fire" style={{ width: 24, height: 24 }} />
@@ -106,7 +108,7 @@ export default function EntProfile() {
                   </div>
                 </>
               )}
-            </div>
+            </div>}
           </div>
         </div>
       </div>
