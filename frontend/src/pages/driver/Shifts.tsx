@@ -5,7 +5,7 @@ import LogoLoader from '../../components/common/LogoLoader'
 import type { Report } from '../../types'
 
 type PeriodKey = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'
-type StatusKey = 'all' | 'pending' | 'approved' | 'rejected'
+type StatusKey = 'all' | 'pending' | 'approved' | 'adjusted' | 'rejected'
 type TypeKey   = 'all' | 'income' | 'fine'
 
 const PERIOD_OPTIONS: { key: PeriodKey; label: string }[] = [
@@ -18,10 +18,11 @@ const PERIOD_OPTIONS: { key: PeriodKey; label: string }[] = [
 ]
 
 const STATUS_OPTIONS: { key: StatusKey; label: string; icon: React.ReactNode }[] = [
-  { key: 'all',      label: 'Все',           icon: <CircleCheck color="var(--orange)" /> },
-  { key: 'pending',  label: 'В обработке',   icon: <CircleClock /> },
-  { key: 'approved', label: 'Принят',        icon: <CircleCheck color="#34C759" /> },
-  { key: 'rejected', label: 'Скорректирован',icon: <CircleCheck color="#007AFF" /> },
+  { key: 'all',       label: 'Все',            icon: <CircleCheck color="var(--orange)" /> },
+  { key: 'pending',   label: 'В обработке',    icon: <CircleClock /> },
+  { key: 'approved',  label: 'Принят',         icon: <CircleCheck color="#34C759" /> },
+  { key: 'adjusted',  label: 'Скорректирован', icon: <CircleCheck color="#007AFF" /> },
+  { key: 'rejected',  label: 'Отклонён',       icon: <CircleCheck color="var(--danger)" /> },
 ]
 
 const TYPE_OPTIONS: { key: TypeKey; label: string; icon: React.ReactNode }[] = [
@@ -84,6 +85,7 @@ function CalendarIcon({ active }: { active: boolean }) {
 
 const StatusIcon = ({ status }: { status: string }) => {
   if (status === 'approved') return <span style={{ color: '#34C759', fontSize: 20 }}>✅</span>
+  if (status === 'adjusted') return <span style={{ color: '#007AFF', fontSize: 20 }}>✏️</span>
   if (status === 'rejected') return <span style={{ color: 'var(--danger)', fontSize: 20 }}>❌</span>
   return <span style={{ color: '#007AFF', fontSize: 18 }}>🕐</span>
 }
@@ -176,12 +178,21 @@ export default function DriverShifts() {
     return rows
   })
 
-  const filteredSalary = filterByPeriod(
-    salaryRows
-      .filter(x => typeFilter === 'all' || (typeFilter === 'income' ? !x.isNegative : x.isNegative))
-      .map(x => x.r),
-    periodFilter, customFrom, customTo,
-  ).map(r => salaryRows.find(x => x.r.id === r.id)!).filter(Boolean)
+  // Фильтруем сами строки (а не коллапсируем в отчёты и обратно) — иначе у
+  // отчёта с ОДНОВРЕМЕННО выплатой и штрафом обе строки схлопывались в одну
+  // (всегда возвращалась первая попавшаяся по id — выплата), и найти штраф
+  // было невозможно ни в списке "Все", ни тем более через фильтр "Штрафы".
+  const filteredSalary = salaryRows
+    .filter(x => typeFilter === 'all' || (typeFilter === 'income' ? !x.isNegative : x.isNegative))
+    .filter(x => filterByPeriod([x.r], periodFilter, customFrom, customTo).length > 0)
+
+  // Сводка за выбранный период — считается только по периоду, независимо от
+  // фильтра "Тип", чтобы всегда показывать полную картину (начисления, штрафы,
+  // итог), даже когда список ниже отфильтрован на один тип.
+  const periodSalaryRows = salaryRows.filter(x => filterByPeriod([x.r], periodFilter, customFrom, customTo).length > 0)
+  const totalIncome = periodSalaryRows.filter(x => !x.isNegative).reduce((s, x) => s + x.amount, 0)
+  const totalFines  = periodSalaryRows.filter(x => x.isNegative).reduce((s, x) => s + x.amount, 0)
+  const totalNet    = totalIncome - totalFines
 
   const totalPages = Math.ceil(filteredReports.length / PER_PAGE)
   const paged = filteredReports.slice((page - 1) * PER_PAGE, page * PER_PAGE)
@@ -333,35 +344,53 @@ export default function DriverShifts() {
       ) : loading ? (
         <LogoLoader fullPage />
       ) : (
-        <div className="card" style={{ margin: '12px 14px', borderRadius: 12 }}>
-          {filteredSalary.length === 0 ? (
-            <div className="empty-state"><div className="empty-icon">💳</div><div>Начислений нет</div></div>
-          ) : filteredSalary.map(({ r, amount, isNegative, comment }) => (
-            <div key={`${r.id}-${isNegative ? 'f' : 'p'}`} className="report-row"
-              style={{ cursor: 'pointer' }} onClick={() => navigate(`/driver/report/${r.id}`)}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {isNegative ? <CircleMinus /> : <CirclePlus />}
-                  <span style={{ fontWeight: 600, fontSize: 15 }}>
-                    {isNegative ? 'Штраф' : 'Начисление'}
-                  </span>
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    {formatDate(r.shift_date)}
-                  </span>
-                </div>
-                {comment && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, paddingLeft: 26 }}>
-                    {comment}
-                  </div>
-                )}
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 15, flexShrink: 0,
-                color: isNegative ? 'var(--danger)' : '#34C759' }}>
-                {isNegative ? '−' : '+'}{amount.toLocaleString('ru-RU')} ₽
-              </span>
+        <>
+          <div className="card" style={{ margin: '12px 14px 0', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>Начислено</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#34C759' }}>+{totalIncome.toLocaleString('ru-RU')} ₽</div>
             </div>
-          ))}
-        </div>
+            <div style={{ width: 1, background: 'var(--border)' }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>Штрафы</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--danger)' }}>−{totalFines.toLocaleString('ru-RU')} ₽</div>
+            </div>
+            <div style={{ width: 1, background: 'var(--border)' }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>Итого</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--orange)' }}>{totalNet.toLocaleString('ru-RU')} ₽</div>
+            </div>
+          </div>
+          <div className="card" style={{ margin: '12px 14px', borderRadius: 12 }}>
+            {filteredSalary.length === 0 ? (
+              <div className="empty-state"><div className="empty-icon">💳</div><div>Начислений нет</div></div>
+            ) : filteredSalary.map(({ r, amount, isNegative, comment }) => (
+              <div key={`${r.id}-${isNegative ? 'f' : 'p'}`} className="report-row"
+                style={{ cursor: 'pointer' }} onClick={() => navigate(`/driver/report/${r.id}`)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {isNegative ? <CircleMinus /> : <CirclePlus />}
+                    <span style={{ fontWeight: 600, fontSize: 15 }}>
+                      {isNegative ? 'Штраф' : 'Начисление'}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                      {formatDate(r.shift_date)}
+                    </span>
+                  </div>
+                  {comment && (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, paddingLeft: 26 }}>
+                      {comment}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontWeight: 700, fontSize: 15, flexShrink: 0,
+                  color: isNegative ? 'var(--danger)' : '#34C759' }}>
+                  {isNegative ? '−' : '+'}{amount.toLocaleString('ru-RU')} ₽
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
