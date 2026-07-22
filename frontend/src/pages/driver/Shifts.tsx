@@ -73,6 +73,15 @@ function CircleMinus() {
     </svg>
   )
 }
+function CircleX({ color }: { color: string }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" fill={color} opacity="0.15"/>
+      <line x1="9" y1="9" x2="15" y2="15" stroke={color} strokeWidth="2.2" strokeLinecap="round"/>
+      <line x1="15" y1="9" x2="9" y2="15" stroke={color} strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  )
+}
 function CalendarIcon({ active }: { active: boolean }) {
   const c = active ? 'var(--orange)' : '#888'
   return (
@@ -84,10 +93,10 @@ function CalendarIcon({ active }: { active: boolean }) {
 }
 
 const StatusIcon = ({ status }: { status: string }) => {
-  if (status === 'approved') return <span style={{ color: '#34C759', fontSize: 20 }}>✅</span>
-  if (status === 'adjusted') return <span style={{ color: '#007AFF', fontSize: 20 }}>✏️</span>
-  if (status === 'rejected') return <span style={{ color: 'var(--danger)', fontSize: 20 }}>❌</span>
-  return <span style={{ color: '#007AFF', fontSize: 18 }}>🕐</span>
+  if (status === 'approved') return <CircleCheck color="#34C759" />
+  if (status === 'adjusted') return <CircleCheck color="#007AFF" />
+  if (status === 'rejected') return <CircleX color="var(--danger)" />
+  return <CircleClock />
 }
 
 function filterByPeriod(reports: Report[], period: PeriodKey, from: string, to: string): Report[] {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { scanReceipt, createReport, getMe, updateMe, getTrips, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import BusIcon from '../../components/common/BusIcon'
+import PickerRow from '../../components/common/PickerRow'
 
 interface Form {
   shift_number: string
@@ -12,7 +13,7 @@ interface Form {
   vehicle_condition: string
 }
 
-const CONDITIONS = ['Выберите', 'исправно', 'неисправно', 'требует ТО']
+const CONDITIONS = ['исправно', 'неисправно', 'требует ТО']
 
 const FieldRow = ({ icon, label, children, onClick }: { icon: React.ReactNode; label: string; children: React.ReactNode; onClick?: () => void }) => (
   <div className="row-item" style={onClick ? { cursor: 'pointer' } : undefined} onClick={onClick}>
@@ -118,7 +119,7 @@ export default function DriverReport() {
   const [driverRoute, setDriverRoute] = useState('')
   const [form, setForm] = useState<Form>({
     shift_number: '', vehicle_plate: '',
-    circles_count: '', cards_count: '', vehicle_condition: 'Выберите',
+    circles_count: '', cards_count: '', vehicle_condition: '',
   })
 
   useEffect(() => {
@@ -161,7 +162,7 @@ export default function DriverReport() {
     form.vehicle_plate.trim() !== '' &&
     isNumber(form.circles_count) &&
     isDigits(form.cards_count) &&
-    form.vehicle_condition !== 'Выберите'
+    form.vehicle_condition !== ''
 
   const openCamera = async () => {
     setShowCamera(true)
@@ -218,7 +219,7 @@ export default function DriverReport() {
   }
 
   const resetForm = () => {
-    setForm(p => ({ shift_number: '', vehicle_plate: p.vehicle_plate, circles_count: '', cards_count: '', vehicle_condition: 'Выберите' }))
+    setForm(p => ({ shift_number: '', vehicle_plate: p.vehicle_plate, circles_count: '', cards_count: '', vehicle_condition: '' }))
     setScanned(false)
     setShowSuccess(false)
   }
@@ -322,13 +323,9 @@ export default function DriverReport() {
             <input className="row-input" placeholder="Введите..." value={form.cards_count} onChange={e => setDigits('cards_count', e.target.value)}
               inputMode="numeric" style={{ color: form.cards_count ? 'var(--orange)' : undefined }} />
           </FieldRow>
-          <FieldRow label="Состояние ТС:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}>
-            <select value={form.vehicle_condition} onChange={e => set('vehicle_condition', e.target.value)}
-              style={{ border: 'none', background: 'transparent', fontSize: 15, fontFamily: 'inherit', cursor: 'pointer', color: form.vehicle_condition === 'Выберите' ? 'var(--text-muted)' : 'var(--orange)', textAlign: 'right' }}>
-              {CONDITIONS.map(c => <option key={c}>{c}</option>)}
-            </select>
-            <span className="row-arrow">›</span>
-          </FieldRow>
+          <PickerRow icon={<div className="row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>}
+            label="Состояние ТС:" value={form.vehicle_condition} options={CONDITIONS}
+            editable onChange={v => set('vehicle_condition', v)} />
         </div>
 
         {/* Scan button */}

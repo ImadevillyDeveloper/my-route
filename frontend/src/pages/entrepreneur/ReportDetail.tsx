@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { adjustReport, deleteReport, getReport, updateReportStatus, getTrips, getAvailableVehiclesForReport, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import BusIcon from '../../components/common/BusIcon'
+import PickerRow from '../../components/common/PickerRow'
 import type { Report } from '../../types'
 
 const fmtTime = (iso: string) => {
@@ -135,92 +136,6 @@ function EditRow({ icon, label, value, editable, onChange, validate, errorMsg, i
         {!editable && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ flexShrink: 0, marginLeft: 2 }}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
       </div>
       {err && <div style={{ fontSize: 11, color: '#FF3B30', padding: '0 16px 8px 52px' }}>{errorMsg ?? 'Неверное значение'}</div>}
-    </div>
-  )
-}
-
-function SelectRow({ icon, label, value, options, editable, onChange, placeholder = 'Выберите', changed }: {
-  icon: React.ReactNode; label: string; value: string; options: string[]; editable?: boolean
-  onChange?: (v: string) => void; placeholder?: string; changed?: boolean
-}) {
-  const color = !value ? '#FF3B30' : changed ? 'var(--orange)' : 'var(--text-primary)'
-  return (
-    <div className="row-item">
-      <OIcon>{icon}</OIcon>
-      <span className="row-label">{label}</span>
-      {editable ? (
-        <select value={value} onChange={e => onChange?.(e.target.value)}
-          style={{ border: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', color, textAlign: 'right', maxWidth: 170 }}>
-          <option value="">{placeholder}</option>
-          {options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      ) : (
-        <span style={{ fontWeight: 600, fontSize: 15 }}>{value || '—'}</span>
-      )}
-    </div>
-  )
-}
-
-/* Стилизованный выпадающий список — тот же паттерн, что и подбор остановки-
-   ориентира/конкурентных маршрутов в Настройках водителя. */
-function VehiclePickerRow({ icon, label, value, options, editable, onChange, loading, emptyText, changed }: {
-  icon: React.ReactNode; label: string; value: string; options: string[]; editable?: boolean
-  onChange?: (v: string) => void; loading?: boolean; emptyText?: string; changed?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
-  const rowRef = useRef<HTMLDivElement>(null)
-  const boxRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => {
-      if (!boxRef.current?.contains(e.target as Node) && !rowRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
-  const toggle = () => {
-    if (!editable) return
-    if (!open && rowRef.current) {
-      const r = rowRef.current.getBoundingClientRect()
-      const width = 220
-      setPos({ top: r.bottom + 4, left: Math.max(14, r.right - width), width })
-    }
-    setOpen(o => !o)
-  }
-
-  return (
-    <div ref={rowRef} className="row-item" style={{ cursor: editable ? 'pointer' : 'default' }} onClick={toggle}>
-      <OIcon>{icon}</OIcon>
-      <span className="row-label">{label}</span>
-      <span style={{ fontWeight: 600, fontSize: 15, color: !value ? (editable ? '#FF3B30' : 'var(--text-muted)') : changed ? 'var(--orange)' : 'var(--text-primary)' }}>
-        {value || (editable ? 'Выберите' : '—')}
-      </span>
-      {editable && (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0, marginLeft: 4, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      )}
-
-      {open && (
-        <div ref={boxRef} onClick={e => e.stopPropagation()}
-          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', zIndex: 2000, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
-          {loading ? (
-            <div style={{ padding: '16px', display: 'flex', justifyContent: 'center' }}><LogoLoader size={26} /></div>
-          ) : options.length === 0 ? (
-            <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--text-muted)' }}>{emptyText ?? 'Нет доступных ТС'}</div>
-          ) : options.map((o, i) => (
-            <div key={o} onMouseDown={() => { onChange?.(o); setOpen(false) }}
-              style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 14, fontWeight: o === value ? 700 : 500, color: o === value ? 'var(--orange)' : 'var(--text-primary)', background: o === value ? '#FFF3EE' : 'white', borderBottom: i < options.length - 1 ? '1px solid #F5F5F5' : 'none' }}
-              onMouseEnter={e => { if (o !== value) e.currentTarget.style.background = '#FAFAFA' }}
-              onMouseLeave={e => { if (o !== value) e.currentTarget.style.background = 'white' }}>
-              {o}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -529,7 +444,7 @@ export default function EntReportDetail() {
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
             label="Номер смены" value={shiftNumber} editable={isPending} onChange={isPending ? markEdited(setShiftNumber) : undefined}
             validate={v => INT_RE.test(v.trim())} errorMsg="Только цифры" inputMode="numeric" changed={shiftNumber !== originalRef.current.shiftNumber} />
-          <VehiclePickerRow icon={<BusIcon size={20} />} label="Гос.номер ТС" value={plate} options={plateOptions}
+          <PickerRow icon={<OIcon><BusIcon size={20} /></OIcon>} label="Гос.номер ТС" value={plate} options={plateOptions}
             editable={isPending} onChange={isPending ? (v => { setPlate(v); setEdited(true) }) : undefined}
             loading={vehiclesLoading} emptyText="Нет свободных ТС на это время" changed={plate !== originalRef.current.plate} />
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>}
@@ -543,7 +458,7 @@ export default function EntReportDetail() {
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}
             label="Кол-во карточек" value={cards} editable={isPending} onChange={isPending ? markEdited(setCards) : undefined}
             validate={v => INT_RE.test(v.trim())} errorMsg="Только цифры" inputMode="numeric" changed={cards !== originalRef.current.cards} />
-          <SelectRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="13 2 13 9 20 9"/><path d="M20 9L13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg>}
+          <PickerRow icon={<OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="13 2 13 9 20 9"/><path d="M20 9L13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg></OIcon>}
             label="Состояние ТС" value={condition} options={CONDITIONS}
             editable={isPending} onChange={isPending ? (v => { setCondition(v); setEdited(true) }) : undefined} changed={condition !== originalRef.current.condition} />
 
