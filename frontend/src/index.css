@@ -99,6 +99,17 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .page-scroll { overflow-y: auto; }
 
+/* ── Page с фиксированной шапкой и отдельно скроллящимся содержимым
+   (напр. список отчётов с панелью фильтров сверху) ── */
+.page-flexcol {
+  min-height: 100vh; min-height: 100svh; min-height: var(--app-vh, 100svh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-gray);
+  overflow: hidden;
+  padding-top: var(--page-top-pad);
+}
+
 /* ── White card ── */
 .card {
   background: white;
@@ -416,6 +427,16 @@ input, textarea, select { font-family: inherit; outline: none; }
     overflow-y: auto;
     padding-top: 0;
     padding-bottom: 0;
+    min-width: 0;
+  }
+
+  /* Тот же переход min-height→height, что и у .page — иначе flex:1/overflowY:auto
+     на внутреннем скролл-блоке никогда не сжимается до реального размера и не
+     включает свою прокрутку, а .layout-root { overflow:hidden } просто обрезает
+     контент без скролла вообще. */
+  .page-flexcol {
+    min-height: unset;
+    height: 100dvh;
     min-width: 0;
   }
 
