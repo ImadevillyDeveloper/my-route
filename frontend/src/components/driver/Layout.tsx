@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useUnreadChatCount } from '../chat/useUnreadChatCount'
+import BusIcon from '../common/BusIcon'
 
 const CHAT_BADGE = (unread: number) => unread > 0 && (
   <span style={{ position: 'absolute', top: -3, right: -3, background: '#FF3B30', color: 'white', fontSize: 9, fontWeight: 700, borderRadius: 8, minWidth: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '1.5px solid white' }}>
@@ -66,7 +67,7 @@ export default function DriverLayout() {
     <div className="layout-root">
       <aside className="sidebar-nav">
         <div className="sidebar-logo">
-          <img src="/bus.png" width="36" height="36" />
+          <BusIcon size={36} />
           <div>
             <div className="sidebar-logo-name">Мой.Маршрут</div>
             <div className="sidebar-logo-role">Водитель</div>

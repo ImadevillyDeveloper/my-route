@@ -22,6 +22,7 @@
   --nav-height: 62px;
   --nav-safe: calc(62px + env(safe-area-inset-bottom, 0px));
   --header-height: 52px;
+  --page-top-pad: var(--header-height);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -425,6 +426,11 @@ input, textarea, select { font-family: inherit; outline: none; }
      var(--nav-safe) to sit above the mobile nav bar would otherwise be
      left with a dead white gap at the bottom of the screen. */
   :root { --nav-safe: env(safe-area-inset-bottom, 0px); }
+
+  /* App header becomes sticky (not fixed) on desktop below — pages that pad
+     by --page-top-pad to clear a FIXED header would otherwise be left with
+     a phantom gap on top, since a sticky header already occupies flow space. */
+  :root { --page-top-pad: 0px; }
 
   /* App header: sticky (not fixed) on desktop, and no longer width-constrained to 430px */
   .app-header {

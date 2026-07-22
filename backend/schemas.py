@@ -100,6 +100,7 @@ class UserOut(BaseModel):
     terminal_stops_json: Optional[str] = None
     active_shift_vehicle_plate: Optional[str] = None
     is_partner: bool = False
+    schedule_routes_json: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -116,6 +117,7 @@ class UserUpdate(BaseModel):
     active_trip_id: Optional[int] = None
     terminal_stops_json: Optional[str] = None
     active_shift_vehicle_plate: Optional[str] = None
+    schedule_routes_json: Optional[str] = None
 
 
 # Admin
@@ -214,6 +216,7 @@ class NamedStopOut(BaseModel):
     name: str
     lat: float
     lng: float
+    st_id: Optional[str] = None
 
 
 class TerminalCoordsOut(BaseModel):
@@ -334,7 +337,7 @@ class ReportCreate(BaseModel):
     shift_date: date
     shift_start: Optional[str] = None
     shift_end: Optional[str] = None
-    total_trips: int = 0
+    total_trips: float = 0
     total_revenue: float = 0.0
     fuel_cost: float = 0.0
     notes: Optional[str] = None
@@ -348,7 +351,7 @@ class ReportOut(BaseModel):
     shift_date: date
     shift_start: Optional[str] = None
     shift_end: Optional[str] = None
-    total_trips: int
+    total_trips: float
     total_revenue: float
     fuel_cost: float
     notes: Optional[str] = None
@@ -369,13 +372,18 @@ class ReportStatusUpdate(BaseModel):
 class ReportAdjust(BaseModel):
     status: ReportStatus
     notes: Optional[str] = None
+    shift_start: Optional[str] = None
+    shift_end: Optional[str] = None
+    plate_number: Optional[str] = None
+    total_trips: Optional[float] = None
+    total_revenue: Optional[float] = None
 
 
 class ScanResult(BaseModel):
     route_number: Optional[str] = None
     shift_date: Optional[str] = None
     total_revenue: Optional[float] = None
-    total_trips: Optional[int] = None
+    total_trips: Optional[float] = None
 
 
 # Routes

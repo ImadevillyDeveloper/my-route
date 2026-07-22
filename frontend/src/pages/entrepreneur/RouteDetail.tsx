@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getRoutes, getVehicles, deleteRoute as apiDeleteRoute, updateRoute, getRivalsLive } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 import { formatCert, capitalizeFirst } from '../../utils/format'
 import { useAuthStore } from '../../store/auth'
 
@@ -198,7 +199,7 @@ export default function EntRouteDetail() {
             <span className="row-arrow" style={{ color: 'var(--orange)', fontSize: 18 }}>›</span>
           </div>
           <div className="row-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/entrepreneur/vehicles', { state: { filterRoute: data.number } })}>
-            <OIcon><img src="/bus.png" width="20" height="20" /></OIcon>
+            <OIcon><BusIcon size={20} /></OIcon>
             <span className="row-label">ТС маршрута</span>
             <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto', marginRight: 6 }}>{totalVehicles} ТС</span>
             <span className="row-arrow" style={{ color: 'var(--orange)', fontSize: 18 }}>›</span>

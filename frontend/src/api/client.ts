@@ -102,7 +102,7 @@ export const postGpsPosition = (lat: number, lng: number, speed: number) =>
   api.post('/tracking/gps', { lat, lng, speed })
 
 // Trips ("рейсы")
-export interface NamedStop { name: string; lat: number; lng: number }
+export interface NamedStop { name: string; lat: number; lng: number; st_id?: string | null }
 export interface TerminalCoords { start: NamedStop | null; end: NamedStop | null }
 export interface StopDeparture { route_number: string; eta_min?: number; destination?: string }
 export interface StopSchedule { stop_name: string; departures: StopDeparture[]; note?: string }
@@ -120,8 +120,8 @@ export const getRouteTerminalCoords = (routeNumber: string) =>
   api.get<TerminalCoords>('/tracking/route-terminals', { params: { route_number: routeNumber } })
 export const getNamedStops = (routeNumber: string) =>
   api.get<NamedStop[]>('/tracking/named-stops', { params: { route_number: routeNumber } })
-export const getStopSchedule = (stopName: string, lat: number, lng: number) =>
-  api.get<StopSchedule>('/tracking/stop-schedule', { params: { stop_name: stopName, lat, lng } })
+export const getStopSchedule = (stopName: string, lat: number, lng: number, stId?: string | null) =>
+  api.get<StopSchedule>('/tracking/stop-schedule', { params: { stop_name: stopName, lat, lng, st_id: stId ?? undefined } })
 export const openTrip = (routeNumber: string, startTerminal: string, direction: 'forward' | 'back', shiftStartRef?: string) =>
   api.post<Trip>('/tracking/trips/open', { route_number: routeNumber, start_terminal: startTerminal, direction, shift_start_ref: shiftStartRef })
 export const closeTrip = (tripId: number, endTerminal: string, closeMethod: 'gps' | 'manual' = 'gps') =>
@@ -187,8 +187,9 @@ export const getReports = (params?: object) => api.get('/reports', { params });
 export const getReport = (id: number) => api.get(`/reports/${id}`);
 export const updateReportStatus = (id: number, status: string) =>
   api.put(`/reports/${id}/status`, { status });
-export const adjustReport = (id: number, status: string, notes?: string) =>
-  api.put(`/reports/${id}/adjust`, { status, notes });
+export const adjustReport = (id: number, status: string, notes?: string, fields?: {
+  shift_start?: string; shift_end?: string; plate_number?: string; total_trips?: number; total_revenue?: number
+}) => api.put(`/reports/${id}/adjust`, { status, notes, ...fields });
 export const deleteReport = (id: number) => api.delete(`/reports/${id}`);
 
 // Routes
@@ -199,6 +200,9 @@ export const deleteRoute = (id: number) => api.delete(`/routes/${id}`);
 
 // Vehicles
 export const getVehicles = () => api.get('/vehicles');
+export const getAvailableVehiclesForReport = (params: {
+  route_number: string; shift_date: string; shift_start?: string; shift_end?: string; exclude_report_id?: number
+}) => api.get('/vehicles/available-for-report', { params });
 export const createVehicle = (data: object) => api.post('/vehicles', data);
 export const updateVehicle = (id: number, data: object) => api.put(`/vehicles/${id}`, data);
 export const deleteVehicle = (id: number) => api.delete(`/vehicles/${id}`);

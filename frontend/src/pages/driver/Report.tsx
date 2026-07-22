@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { scanReceipt, createReport, getMe, updateMe, getTrips } from '../../api/client'
+import { scanReceipt, createReport, getMe, updateMe, getTrips, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 
 interface Form {
   shift_number: string
@@ -13,8 +14,8 @@ interface Form {
 
 const CONDITIONS = ['Выберите', 'исправно', 'неисправно', 'требует ТО']
 
-const FieldRow = ({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) => (
-  <div className="row-item">
+const FieldRow = ({ icon, label, children, onClick }: { icon: React.ReactNode; label: string; children: React.ReactNode; onClick?: () => void }) => (
+  <div className="row-item" style={onClick ? { cursor: 'pointer' } : undefined} onClick={onClick}>
     <div className="row-icon">{icon}</div>
     <span className="row-label">{label}</span>
     {children}
@@ -50,6 +51,50 @@ const fmtTime = (iso: string) => {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
+function TripsModal({ shiftStartRef, onClose }: { shiftStartRef: string; onClose: () => void }) {
+  const [trips, setTrips] = useState<Trip[] | null>(null)
+
+  useEffect(() => {
+    getTrips({ shift_start_ref: shiftStartRef }).then(r => setTrips(r.data)).catch(() => setTrips([]))
+  }, [shiftStartRef])
+
+  return (
+    <div onClick={onClose}
+      className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 380, maxHeight: 'calc(var(--app-vh, 100vh) * 0.75)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '20px 22px 0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <span style={{ fontWeight: 800, fontSize: 17 }}>Рейсы за смену</span>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 22px 20px' }}>
+          {trips === null ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
+          ) : trips.length === 0 ? (
+            <div style={{ fontSize: 14, color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>Нет данных о рейсах</div>
+          ) : (
+            trips.map((t, i) => {
+              const durationMin = t.ended_at ? Math.round((new Date(t.ended_at).getTime() - new Date(t.started_at).getTime()) / 60000) : null
+              return (
+                <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F5F5F5' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{i + 1}. {t.start_terminal} → {t.end_terminal ?? '…'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {fmtTime(t.started_at)}–{t.ended_at ? fmtTime(t.ended_at) : '…'}{durationMin != null ? ` (${durationMin} мин)` : ''}
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DriverReport() {
   const [scanned, setScanned] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -58,6 +103,9 @@ export default function DriverReport() {
   const [showError, setShowError] = useState(false)
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [shiftStartTime, setShiftStartTime] = useState('')
+  const [shiftStartRef, setShiftStartRef] = useState('')
+  const [shiftEndTime, setShiftEndTime] = useState(() => fmtTime(new Date().toISOString()))
+  const [showTrips, setShowTrips] = useState(false)
   const [shiftActive, setShiftActive] = useState<boolean | null>(null)  // null = ещё не проверили
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -82,24 +130,36 @@ export default function DriverReport() {
       setShiftActive(!!r.data.active_shift_start)
       if (r.data.active_shift_start) {
         setShiftStartTime(fmtTime(r.data.active_shift_start))
+        setShiftStartRef(r.data.active_shift_start)
         // Кол-во кругов предзаполняем по факту зафиксированных рейсов (кругов = рейсов / 2),
-        // но поле остаётся редактируемым — водитель может поправить перед отправкой.
+        // БЕЗ округления — нечётное число рейсов даёт например 5.5 круга. Поле
+        // остаётся редактируемым — водитель может поправить перед отправкой.
         getTrips({ shift_start_ref: r.data.active_shift_start }).then(tr => {
-          if (tr.data.length > 0) set('circles_count', String(Math.round(tr.data.length / 2)))
+          if (tr.data.length > 0) set('circles_count', String(tr.data.length / 2))
         }).catch(() => {})
       }
     }).catch(() => setShiftActive(false))
   }, [])
 
+  // Окончание смены — живое время, обновляется пока водитель заполняет отчёт;
+  // именно это значение и уходит в отчёт при отправке (см. handleSubmit).
+  useEffect(() => {
+    const t = setInterval(() => setShiftEndTime(fmtTime(new Date().toISOString())), 30000)
+    return () => clearInterval(t)
+  }, [])
+
   const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
   const setDigits = (k: keyof Form, v: string) => set(k, v.replace(/\D/g, ''))
+  // Кол-во кругов может быть дробным (напр. 5.5) — разрешаем цифры и одну точку.
+  const setCircles = (v: string) => set('circles_count', v.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))
 
   const isDigits = (s: string) => /^\d+$/.test(s.trim())
+  const isNumber = (s: string) => /^\d+(\.\d+)?$/.test(s.trim())
 
   const isValid = () =>
     isDigits(form.shift_number) &&
     form.vehicle_plate.trim() !== '' &&
-    isDigits(form.circles_count) &&
+    isNumber(form.circles_count) &&
     isDigits(form.cards_count) &&
     form.vehicle_condition !== 'Выберите'
 
@@ -144,7 +204,7 @@ export default function DriverReport() {
         route_number: driverRoute || form.vehicle_plate || undefined,
         plate_number: form.vehicle_plate || undefined,
         shift_date: new Date().toISOString().slice(0, 10),
-        shift_start: shiftStartTime, shift_end: fmtTime(new Date().toISOString()),
+        shift_start: shiftStartTime, shift_end: shiftEndTime,
         total_trips: Number(form.circles_count) || 0,
         total_revenue: Number(form.cards_count) * 50 || 0,
         fuel_cost: 0,
@@ -239,18 +299,24 @@ export default function DriverReport() {
               <span className="row-value" style={{ color: 'var(--orange)' }}>{shiftStartTime}</span>
             </FieldRow>
           )}
+          <FieldRow label="Окончание смены:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}>
+            <span className="row-value" style={{ color: 'var(--orange)' }}>{shiftEndTime}</span>
+          </FieldRow>
           <FieldRow label="Номер смены:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}>
             <input className="row-input" placeholder="Введите..." value={form.shift_number} onChange={e => setDigits('shift_number', e.target.value)}
               inputMode="numeric" style={{ color: form.shift_number ? 'var(--orange)' : undefined }} />
           </FieldRow>
-          <FieldRow label="Гос. номер ТС:" icon={<img src="/bus.png" width="20" height="20" />}>
+          <FieldRow label="Гос. номер ТС:" icon={<BusIcon size={20} />}>
             <span className={form.vehicle_plate ? 'row-value' : 'row-value-gray'}>
               {form.vehicle_plate || 'не назначен'}
             </span>
           </FieldRow>
           <FieldRow label="Кол-во кругов:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></svg>}>
-            <input className="row-input" placeholder="Введите..." value={form.circles_count} onChange={e => setDigits('circles_count', e.target.value)}
-              inputMode="numeric" style={{ color: form.circles_count ? 'var(--orange)' : undefined }} />
+            <input className="row-input" placeholder="Введите..." value={form.circles_count} onChange={e => setCircles(e.target.value)}
+              inputMode="decimal" style={{ color: form.circles_count ? 'var(--orange)' : undefined }} />
+            {shiftStartRef && (
+              <span onClick={() => setShowTrips(true)} style={{ color: 'var(--orange)', fontSize: 18, marginLeft: 4, cursor: 'pointer' }}>›</span>
+            )}
           </FieldRow>
           <FieldRow label="Кол-во карточек:" icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}>
             <input className="row-input" placeholder="Введите..." value={form.cards_count} onChange={e => setDigits('cards_count', e.target.value)}
@@ -325,6 +391,8 @@ export default function DriverReport() {
           </button>
         </Modal>
       )}
+
+      {showTrips && shiftStartRef && <TripsModal shiftStartRef={shiftStartRef} onClose={() => setShowTrips(false)} />}
     </div>
   )
 }

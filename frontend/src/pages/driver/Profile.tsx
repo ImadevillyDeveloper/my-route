@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getMe, uploadDriverPhoto, resolveAssetUrl } from '../../api/client'
 import { useNavigate } from 'react-router-dom'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 import type { User } from '../../types'
 
 const Row = ({ icon, label, value, valueColor }: {
@@ -71,7 +72,7 @@ export default function DriverProfile() {
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>}
             label="Номер ВУ" value={user.driver_id || '—'} />
           <Row
-            icon={<img src="/bus.png" width="20" height="20" />}
+            icon={<BusIcon size={20} />}
             label="Гос. номер ТС" value={plate} valueColor={plate !== '—' ? 'var(--orange)' : undefined} />
           <Row
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 17l2-7h14l2 7"/><path d="M5 17h14"/></svg>}

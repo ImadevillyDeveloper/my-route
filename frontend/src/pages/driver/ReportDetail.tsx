@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getReport, getTrips, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 import type { Report } from '../../types'
 
 const OIcon = ({ children }: { children: React.ReactNode }) => (
@@ -128,7 +129,7 @@ export default function DriverReportDetail() {
             <span style={{ color: 'var(--orange)', fontWeight: 700, fontSize: 15 }}>{get('Смена', String(report.id))}</span>
           </div>
           <div className="row-item">
-            <OIcon><img src="/bus.png" width="20" height="20" /></OIcon>
+            <OIcon><BusIcon size={20} /></OIcon>
             <span className="row-label">Гос.номер ТС</span>
             <span style={{ color: 'var(--orange)', fontWeight: 700, fontSize: 15 }}>{get('Гос.номер', 'X264MP55')}</span>
           </div>

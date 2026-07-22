@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getVehiclesMap, getDrivers, getRivalsLive, getMyVehiclesLive, getNearestStop } from '../../api/client'
 import { getRoutesWithOverrides } from '../../api/routes'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 
 declare global { interface Window { ymaps: any } }
 
@@ -438,7 +439,7 @@ export default function EntMap() {
                     onClick={() => { if (localVeh) { setSelectedNav(null); navigate(`/entrepreneur/vehicles/${localVeh.id}`) } }}
                     disabled={!localVeh}
                     style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: `2px solid ${localVeh ? 'var(--orange)' : '#E0E0E0'}`, background: 'white', color: localVeh ? 'var(--orange)' : '#BBBBBB', fontWeight: 700, fontSize: 14, cursor: localVeh ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <img src="/bus.png" width="16" height="16" style={{ opacity: localVeh ? 1 : 0.4 }} />
+                    <BusIcon size={16} color="currentColor" />
                     Карточка ТС
                   </button>
                   <button

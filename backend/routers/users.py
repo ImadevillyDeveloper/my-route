@@ -52,6 +52,8 @@ def update_me(
         current_user.active_trip_id = update.active_trip_id
     if update.terminal_stops_json is not None:
         current_user.terminal_stops_json = update.terminal_stops_json
+    if update.schedule_routes_json is not None:
+        current_user.schedule_routes_json = update.schedule_routes_json
     db.commit()
     db.refresh(current_user)
     return current_user

@@ -12,6 +12,7 @@ import DriverReport       from './pages/driver/Report'
 import DriverReportDetail from './pages/driver/ReportDetail'
 import DriverShifts       from './pages/driver/Shifts'
 import DriverSettings     from './pages/driver/Settings'
+import DriverMapSettings  from './pages/driver/MapSettings'
 import DriverChat         from './pages/driver/Chat'
 
 // Entrepreneur pages
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="report/:id"    element={<DriverReportDetail />} />
           <Route path="shifts"        element={<DriverShifts />} />
           <Route path="settings"      element={<DriverSettings />} />
+          <Route path="settings/map"  element={<DriverMapSettings />} />
           <Route path="chat"          element={<DriverChat />} />
         </Route>
 

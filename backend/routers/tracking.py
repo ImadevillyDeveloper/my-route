@@ -228,7 +228,11 @@ def _fetch_route_stops(mr_id: str, route_number: str = "", db: Optional[Session]
             if not rt:
                 continue
             result[rt] = [
-                {"st_lat": float(s["st_lat"]), "st_lng": float(s["st_long"])}
+                {
+                    "st_lat": float(s["st_lat"]),
+                    "st_lng": float(s["st_long"]),
+                    "st_id": str(s["st_id"]) if s.get("st_id") else None,
+                }
                 for s in race.get("stopList", [])
                 if s.get("st_lat") and s.get("st_long")
             ]
@@ -265,7 +269,10 @@ def _fetch_named_stops(mr_id: str) -> list[dict]:
                 lng  = s.get("st_long")
                 name = (s.get("st_title") or s.get("st_name") or "").strip()
                 if lat and lng and name and name not in seen:
-                    stops.append({"name": name, "lat": float(lat), "lng": float(lng)})
+                    stops.append({
+                        "name": name, "lat": float(lat), "lng": float(lng),
+                        "st_id": str(s["st_id"]) if s.get("st_id") else None,
+                    })
                     seen.add(name)
         _named_stops_cache[mr_id] = stops
         return stops
@@ -293,7 +300,7 @@ def _terminal_coords(route_number: str, db: Session) -> dict:
         dest = stops_data.get(rt + "_dest")
         if stop_list and dest:
             last = stop_list[-1]
-            by_dest[dest] = {"name": dest, "lat": last["st_lat"], "lng": last["st_lng"]}
+            by_dest[dest] = {"name": dest, "lat": last["st_lat"], "lng": last["st_lng"], "st_id": last.get("st_id")}
 
     return {
         "start": by_dest.get(route.start_point),
@@ -301,12 +308,55 @@ def _terminal_coords(route_number: str, db: Session) -> dict:
     }
 
 
-def _fetch_stop_schedule(stop_name: str, lat: float, lng: float) -> schemas.StopScheduleOut:
-    """TODO(navitrans-schedule): точный RPC-метод/параметры для расписания выезда
-    с остановки пока неизвестны (в отличие от getRoute/getUnitsInRect, уже
-    используемых выше). Ждём пример запроса с сайта bus-55.ru. Пока — заглушка
-    со стабильным контрактом, чтобы фронт можно было полностью собрать уже сейчас."""
-    return schemas.StopScheduleOut(stop_name=stop_name, departures=[], note="Расписание временно недоступно")
+def _arrive_eta_min(systime: Optional[str], arrivetime: Optional[str]) -> Optional[int]:
+    """tc_systime/tc_arrivetime — строки "ЧЧ:ММ[:СС]". Разница в минутах, с
+    переходом через полночь (напр. systime 23:55, arrivetime 00:05 -> 10 мин)."""
+    if not systime or not arrivetime:
+        return None
+    try:
+        def _to_min(s: str) -> int:
+            h, m = s.split(":")[:2]
+            return int(h) * 60 + int(m)
+        diff = _to_min(arrivetime) - _to_min(systime)
+        return diff + 1440 if diff < 0 else diff
+    except Exception:
+        return None
+
+
+def _fetch_stop_schedule(
+    stop_name: str, lat: float, lng: float, st_id: Optional[str] = None,
+    allowed_routes: Optional[set[str]] = None,
+) -> schemas.StopScheduleOut:
+    """Расписание выезда КОНКУРЕНТОВ с остановки — RPC-метод getStopArrive
+    (тот же, что использует bus-55.ru для окошка "Прогноз" по клику на остановку).
+    allowed_routes — маршруты, настроенные водителем как конкурентные в Настройках;
+    всё остальное (включая свой собственный маршрут) отфильтровывается, отчёт по всем
+    подряд не нужен."""
+    if not st_id:
+        return schemas.StopScheduleOut(stop_name=stop_name, departures=[], note="Для этой остановки нет данных Навитранса")
+    if not allowed_routes:
+        return schemas.StopScheduleOut(stop_name=stop_name, departures=[], note="Не выбраны маршруты для отображения в расписании")
+    try:
+        data = _navitrans_call("getStopArrive", {"st_id": st_id})
+        rows = data.get("result", [])
+        if not isinstance(rows, list):
+            return schemas.StopScheduleOut(stop_name=stop_name, departures=[], note="Расписание временно недоступно")
+        departures = []
+        for r in rows[:30]:
+            route_number = str(r.get("mr_num", "") or "").strip()
+            if not route_number or route_number not in allowed_routes:
+                continue
+            departures.append(schemas.StopDeparture(
+                route_number=route_number,
+                eta_min=_arrive_eta_min(r.get("tc_systime"), r.get("tc_arrivetime")),
+                destination=(r.get("laststation_title") or "").strip() or None,
+            ))
+            if len(departures) >= 10:
+                break
+        note = None if departures else "Ближайших рейсов конкурентов не найдено"
+        return schemas.StopScheduleOut(stop_name=stop_name, departures=departures, note=note)
+    except Exception:
+        return schemas.StopScheduleOut(stop_name=stop_name, departures=[], note="Расписание временно недоступно")
 
 
 def _nearest_stop_idx(lat: float, lng: float, stops: list) -> tuple[int, float]:
@@ -801,10 +851,22 @@ def get_stop_schedule(
     stop_name: str = Query(...),
     lat: float = Query(...),
     lng: float = Query(...),
+    st_id: Optional[str] = Query(default=None),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Расписание выезда конкурентов с остановки. TBD — см. _fetch_stop_schedule."""
-    return _fetch_stop_schedule(stop_name, lat, lng)
+    """Расписание выезда конкурентов с остановки — см. _fetch_stop_schedule.
+    Маршруты для отображения — schedule_routes_json, если водитель его настроил
+    (личный подсписок конкурентных); иначе, пока не настроил — все конкурентные."""
+    try:
+        if current_user.schedule_routes_json is not None:
+            allowed = set(_json.loads(current_user.schedule_routes_json))
+        elif current_user.rival_routes_json:
+            allowed = set(_json.loads(current_user.rival_routes_json))
+        else:
+            allowed = set()
+    except Exception:
+        allowed = set()
+    return _fetch_stop_schedule(stop_name, lat, lng, st_id, allowed)
 
 
 # ── Рейсы ("Trip") ──────────────────────────────────────────────

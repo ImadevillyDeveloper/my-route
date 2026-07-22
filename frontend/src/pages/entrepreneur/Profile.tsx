@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMe, uploadMyPhoto, resolveAssetUrl } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 
 const TILES = [
-  { icon: <img src="/bus.png" width="28" height="28" />, title: 'Мои ТС', sub: 'Страховки и техосмотры', to: '/entrepreneur/vehicles' },
+  { icon: <BusIcon size={28} />, title: 'Мои ТС', sub: 'Страховки и техосмотры', to: '/entrepreneur/vehicles' },
   { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="1.5"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>, title: 'Мои Отчёты', sub: 'Просмотр и начисления', to: '/entrepreneur/reports' },
   { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>, title: 'Мои Водители', sub: 'Персональные данные сотрудников', to: '/entrepreneur/drivers' },
   { icon: <img src="/route-icon.png" width="28" height="28" />, title: 'Мои Маршруты', sub: 'Настройка и управление', to: '/entrepreneur/routes' },
@@ -69,7 +70,7 @@ export default function EntProfile() {
           <div onClick={handleAvatarClick} style={{ width: 80, height: 80, borderRadius: '50%', background: '#E8E8E8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer' }}>
             {avatar
               ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <img src="/bus.png" width="40" height="40" style={{ opacity: 0.35 }} />
+              : <BusIcon size={40} style={{ opacity: 0.35 }} />
             }
           </div>
           <div onClick={handleAvatarClick} style={{ position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: '50%', background: 'var(--orange)', border: '2px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getVehicles, getRoutes, createDriver, uploadDriverPhoto } from '../../api/client'
 import { formatVU, formatPhone, capitalizeName } from '../../utils/format'
+import BusIcon from '../../components/common/BusIcon'
 
 const CheckCircle = () => (
   <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2.5px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -203,7 +204,7 @@ export default function EntDriverAdd() {
             />
           )}
           <DropdownRow
-            icon={<img src="/bus.png" width="20" height="20" />}
+            icon={<BusIcon size={20} />}
             label="Гос. номер ТС" value={form.plate} options={platesToShow}
             onSelect={selectPlate} dataAttr="data-add-plate-drop"
           />

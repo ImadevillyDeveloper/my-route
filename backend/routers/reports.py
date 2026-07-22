@@ -136,6 +136,17 @@ def adjust_report(
     report.status = update.status
     if update.notes is not None:
         report.notes = update.notes
+    if update.shift_start is not None:
+        report.shift_start = update.shift_start
+    if update.shift_end is not None:
+        report.shift_end = update.shift_end
+    if update.plate_number is not None:
+        v = db.query(models.Vehicle).filter(models.Vehicle.plate_number == update.plate_number).first()
+        report.vehicle_id = v.id if v else None
+    if update.total_trips is not None:
+        report.total_trips = update.total_trips
+    if update.total_revenue is not None:
+        report.total_revenue = update.total_revenue
     report.reviewed_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(report)

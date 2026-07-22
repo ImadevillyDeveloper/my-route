@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { adjustReport, deleteReport, getReport, updateReportStatus, getTrips, type Trip } from '../../api/client'
+import { adjustReport, deleteReport, getReport, updateReportStatus, getTrips, getAvailableVehiclesForReport, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 import type { Report } from '../../types'
 
 const fmtTime = (iso: string) => {
@@ -74,179 +75,268 @@ function rebuildNotes(original: string, updates: Record<string, string>): string
   return result
 }
 
-function EditRow({ icon, label, value, editable, onChange }: {
+// ЧЧ:ММ — двоеточие подставляется само после двух цифр, дальше ещё две цифры.
+// Часы/минуты подрезаются посимвольно (первая цифра часа >2 сразу зажимается
+// до "2", и т.п.), чтобы вообще нельзя было ввести, например, 25:00.
+function clampTimeDigits(digits: string): string {
+  digits = digits.slice(0, 4)
+  if (digits.length >= 1 && digits[0] > '2') digits = '2' + digits.slice(1)
+  if (digits.length >= 2 && digits[0] === '2' && digits[1] > '3') digits = digits[0] + '3' + digits.slice(2)
+  if (digits.length >= 3 && digits[2] > '5') digits = digits.slice(0, 2) + '5' + digits.slice(3)
+  return digits
+}
+function formatTimeDigits(digits: string): string {
+  return digits.length < 2 ? digits : digits.slice(0, 2) + ':' + digits.slice(2)
+}
+
+function EditRow({ icon, label, value, editable, onChange, validate, errorMsg, inputMode, changed, mask }: {
   icon: React.ReactNode; label: string; value: string; editable?: boolean; onChange?: (v: string) => void
+  validate?: (v: string) => boolean; errorMsg?: string; inputMode?: 'numeric' | 'decimal'; changed?: boolean; mask?: 'time'
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft]     = useState(value)
+  const [err, setErr]         = useState(false)
   const ref = useRef<HTMLInputElement>(null)
 
-  const start = () => { if (!editable || !onChange) return; setDraft(value); setEditing(true); setTimeout(() => ref.current?.focus(), 0) }
-  const save  = () => { setEditing(false); if (draft !== value) onChange?.(draft) }
+  const start = () => { if (!editable || !onChange) return; setDraft(value); setErr(false); setEditing(true); setTimeout(() => ref.current?.focus(), 0) }
+  const save  = () => {
+    if (validate && !validate(draft)) { setErr(true); return }
+    setEditing(false); setErr(false)
+    if (draft !== value) onChange?.(draft)
+  }
 
   return (
-    <div className="row-item" style={{ cursor: editable ? 'pointer' : 'default' }} onClick={!editing ? start : undefined}>
+    <div>
+      <div className="row-item" style={{ cursor: editable ? 'pointer' : 'default' }} onClick={!editing ? start : undefined}>
+        <OIcon>{icon}</OIcon>
+        <span className="row-label">{label}</span>
+        {editing ? (
+          <input ref={ref} value={draft} inputMode={mask === 'time' ? 'numeric' : inputMode} maxLength={mask === 'time' ? 5 : undefined}
+            onChange={e => setDraft(mask === 'time' ? formatTimeDigits(clampTimeDigits(e.target.value.replace(/\D/g, ''))) : e.target.value)}
+            onBlur={save}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { save(); return }
+              // Backspace ровно на границе "ЧЧ:|" — без этого перехвата стирание
+              // просто восстанавливает то же двоеточие обратно, и удалить цифру
+              // до него становится невозможно.
+              if (mask === 'time' && e.key === 'Backspace') {
+                const el = e.currentTarget
+                if (draft.length >= 3 && draft[2] === ':' && el.selectionStart === el.selectionEnd && el.selectionStart === 3) {
+                  e.preventDefault()
+                  setDraft(formatTimeDigits(draft.replace(/\D/g, '').slice(0, -1)))
+                }
+              }
+            }}
+            style={{ flex: 1, textAlign: 'right', border: 'none', borderBottom: `1.5px solid ${err ? '#FF3B30' : 'var(--orange)'}`, background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', outline: 'none', color: err ? '#FF3B30' : 'var(--orange)' }} />
+        ) : (
+          <span style={{ fontWeight: 600, fontSize: 15, color: changed ? 'var(--orange)' : 'var(--text-primary)' }}>{value}</span>
+        )}
+        {editable && !editing && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginLeft: 2 }}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}
+        {!editable && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ flexShrink: 0, marginLeft: 2 }}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
+      </div>
+      {err && <div style={{ fontSize: 11, color: '#FF3B30', padding: '0 16px 8px 52px' }}>{errorMsg ?? 'Неверное значение'}</div>}
+    </div>
+  )
+}
+
+function SelectRow({ icon, label, value, options, editable, onChange, placeholder = 'Выберите', changed }: {
+  icon: React.ReactNode; label: string; value: string; options: string[]; editable?: boolean
+  onChange?: (v: string) => void; placeholder?: string; changed?: boolean
+}) {
+  const color = !value ? '#FF3B30' : changed ? 'var(--orange)' : 'var(--text-primary)'
+  return (
+    <div className="row-item">
       <OIcon>{icon}</OIcon>
       <span className="row-label">{label}</span>
-      {editing ? (
-        <input ref={ref} value={draft} onChange={e => setDraft(e.target.value)}
-          onBlur={save} onKeyDown={e => e.key === 'Enter' && save()}
-          style={{ flex: 1, textAlign: 'right', border: 'none', borderBottom: '1.5px solid var(--orange)', background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', outline: 'none', color: 'var(--orange)' }} />
+      {editable ? (
+        <select value={value} onChange={e => onChange?.(e.target.value)}
+          style={{ border: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', color, textAlign: 'right', maxWidth: 170 }}>
+          <option value="">{placeholder}</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
       ) : (
-        <span style={{ fontWeight: 600, fontSize: 15 }}>{value}</span>
+        <span style={{ fontWeight: 600, fontSize: 15 }}>{value || '—'}</span>
       )}
-      {editable && !editing && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginLeft: 2 }}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}
-      {!editable && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ flexShrink: 0, marginLeft: 2 }}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
     </div>
   )
 }
 
-/* ── Payment modal ───────────────────────────────────────────────── */
-function PayModal({ recommended, onConfirm, onClose }: {
-  recommended: number; onConfirm: (amount: number) => Promise<void>; onClose: () => void
+/* Стилизованный выпадающий список — тот же паттерн, что и подбор остановки-
+   ориентира/конкурентных маршрутов в Настройках водителя. */
+function VehiclePickerRow({ icon, label, value, options, editable, onChange, loading, emptyText, changed }: {
+  icon: React.ReactNode; label: string; value: string; options: string[]; editable?: boolean
+  onChange?: (v: string) => void; loading?: boolean; emptyText?: string; changed?: boolean
 }) {
-  const [useRec,  setUseRec]  = useState(true)   // true = recommended, false = manual
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const rowRef = useRef<HTMLDivElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      if (!boxRef.current?.contains(e.target as Node) && !rowRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const toggle = () => {
+    if (!editable) return
+    if (!open && rowRef.current) {
+      const r = rowRef.current.getBoundingClientRect()
+      const width = 220
+      setPos({ top: r.bottom + 4, left: Math.max(14, r.right - width), width })
+    }
+    setOpen(o => !o)
+  }
+
+  return (
+    <div ref={rowRef} className="row-item" style={{ cursor: editable ? 'pointer' : 'default' }} onClick={toggle}>
+      <OIcon>{icon}</OIcon>
+      <span className="row-label">{label}</span>
+      <span style={{ fontWeight: 600, fontSize: 15, color: !value ? (editable ? '#FF3B30' : 'var(--text-muted)') : changed ? 'var(--orange)' : 'var(--text-primary)' }}>
+        {value || (editable ? 'Выберите' : '—')}
+      </span>
+      {editable && (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0, marginLeft: 4, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      )}
+
+      {open && (
+        <div ref={boxRef} onClick={e => e.stopPropagation()}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', zIndex: 2000, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: '16px', display: 'flex', justifyContent: 'center' }}><LogoLoader size={26} /></div>
+          ) : options.length === 0 ? (
+            <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--text-muted)' }}>{emptyText ?? 'Нет доступных ТС'}</div>
+          ) : options.map((o, i) => (
+            <div key={o} onMouseDown={() => { onChange?.(o); setOpen(false) }}
+              style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 14, fontWeight: o === value ? 700 : 500, color: o === value ? 'var(--orange)' : 'var(--text-primary)', background: o === value ? '#FFF3EE' : 'white', borderBottom: i < options.length - 1 ? '1px solid #F5F5F5' : 'none' }}
+              onMouseEnter={e => { if (o !== value) e.currentTarget.style.background = '#FAFAFA' }}
+              onMouseLeave={e => { if (o !== value) e.currentTarget.style.background = 'white' }}>
+              {o}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Review modal (выплата и/или штраф — можно оба сразу) ──────────── */
+function ReviewModal({ recommended, initialPay, initialFine, onConfirm, onClose }: {
+  recommended: number; initialPay: boolean; initialFine: boolean
+  onConfirm: (payment: number, fine: number, fineReason: string) => Promise<void>; onClose: () => void
+}) {
+  const [payOn,   setPayOn]   = useState(initialPay)
+  const [useRec,  setUseRec]  = useState(true)   // true = рекомендованная, false = вручную
   const [manual,  setManual]  = useState('')
+  const [fineOn,  setFineOn]  = useState(initialFine)
+  const [fineAmount, setFineAmount] = useState('')
+  const [fineReason, setFineReason] = useState('')
   const [loading, setLoading] = useState(false)
   const [err,     setErr]     = useState('')
 
-  const manualVal = parseInt(manual || '0')
-  const amount    = useRec ? recommended : manualVal
-  const canSubmit = useRec ? recommended > 0 : manualVal > 0
+  const manualVal   = parseInt(manual || '0')
+  const payAmount   = payOn ? (useRec ? recommended : manualVal) : 0
+  const fineAmountN = fineOn ? parseInt(fineAmount || '0') : 0
+  const payValid    = !payOn || (useRec ? recommended > 0 : manualVal > 0)
+  const fineValid   = !fineOn || fineAmountN > 0
+  const canSubmit   = (payOn || fineOn) && payValid && fineValid
 
   const handleSubmit = async () => {
     if (!canSubmit || loading) return
     setLoading(true); setErr('')
-    try { await onConfirm(amount) }
+    try { await onConfirm(payAmount, fineAmountN, fineReason.trim()) }
     catch { setErr('Ошибка при сохранении. Попробуйте ещё раз.'); setLoading(false) }
   }
 
-  return (
-    <div onClick={onClose} className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 24, padding: '28px 24px 24px', width: '100%', maxWidth: 340, position: 'relative', textAlign: 'center' }}>
-        <button onClick={onClose} style={{ position: 'absolute', top: 14, right: 18, background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#999', lineHeight: 1 }}>✕</button>
-
-        <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 18px' }}>
-          <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#EDFAF1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="1.8" strokeLinecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          </div>
-          <span style={{ position: 'absolute', top: -4, right: -4, color: '#34C759', fontSize: 14, fontWeight: 700 }}>+</span>
-          <span style={{ position: 'absolute', top: 10, left: -10, color: '#A8EFC0', fontSize: 11, fontWeight: 700 }}>+</span>
-          <span style={{ position: 'absolute', bottom: -4, right: -8, color: '#A8EFC0', fontSize: 11, fontWeight: 700 }}>+</span>
-        </div>
-
-        <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 18 }}>Начислить выплату</div>
-
-        {/* Recommended */}
-        <div onClick={() => setUseRec(true)} style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 16px', borderRadius: 14, marginBottom: 10, cursor: 'pointer',
-          border: `2px solid ${useRec ? '#34C759' : 'var(--border)'}`,
-          background: useRec ? '#EDFAF1' : 'white',
-        }}>
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Рекомендованная сумма</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>рассчитана по карточкам</div>
-          </div>
-          <div style={{ fontWeight: 900, fontSize: 18, color: '#34C759' }}>{recommended.toLocaleString('ru-RU')} ₽</div>
-        </div>
-
-        {/* Manual */}
-        <div onClick={() => setUseRec(false)} style={{
-          padding: '12px 16px', borderRadius: 14, marginBottom: 16, cursor: 'pointer',
-          border: `2px solid ${!useRec ? '#34C759' : 'var(--border)'}`,
-          background: !useRec ? '#EDFAF1' : 'white',
-        }}>
-          <div style={{ fontWeight: 700, fontSize: 14, textAlign: 'left', marginBottom: 8 }}>Ввести вручную</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="number" inputMode="numeric"
-              value={manual}
-              onChange={e => { setManual(e.target.value.replace(/\D/g, '')); setUseRec(false) }}
-              onFocus={() => setUseRec(false)}
-              placeholder="0"
-              style={{ flex: 1, border: 'none', borderBottom: `1.5px solid ${!useRec ? '#34C759' : 'var(--border)'}`, background: 'transparent', fontSize: 18, fontWeight: 700, outline: 'none', fontFamily: 'inherit', padding: '4px 0', color: 'var(--text-primary)' }}
-            />
-            <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-muted)' }}>₽</span>
-          </div>
-        </div>
-
-        {err && <div style={{ color: '#FF3B30', fontSize: 13, marginBottom: 10 }}>{err}</div>}
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button type="button" onClick={onClose} style={{ flex: 1, padding: '13px', borderRadius: 50, border: '2px solid var(--border)', background: 'white', color: 'var(--text-secondary)', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Отмена</button>
-          <button type="button" onClick={handleSubmit}
-            style={{ flex: 1, padding: '13px', borderRadius: 50, border: 'none', background: canSubmit && !loading ? '#34C759' : '#ccc', color: 'white', fontWeight: 700, fontSize: 15, cursor: canSubmit && !loading ? 'pointer' : 'default' }}>
-            {loading ? '...' : 'Начислить'}
-          </button>
-        </div>
-      </div>
+  const ToggleHeader = ({ on, onToggle, color, bg, icon, title }: {
+    on: boolean; onToggle: () => void; color: string; bg: string; icon: React.ReactNode; title: string
+  }) => (
+    <div onClick={onToggle} style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 14, cursor: 'pointer',
+      border: `2px solid ${on ? color : 'var(--border)'}`, background: on ? bg : 'white',
+    }}>
+      <div style={{ width: 34, height: 34, borderRadius: '50%', background: on ? 'white' : '#F5F5F5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+      <span style={{ fontWeight: 700, fontSize: 14, flex: 1, textAlign: 'left' }}>{title}</span>
+      <div className={`toggle ${on ? 'toggle-on' : 'toggle-off'}`}><div className="toggle-thumb" /></div>
     </div>
   )
-}
-
-/* ── Fine modal ──────────────────────────────────────────────────── */
-function FineModal({ onConfirm, onClose }: {
-  onConfirm: (amount: number, comment: string) => Promise<void>; onClose: () => void
-}) {
-  const [amount,  setAmount]  = useState('')
-  const [comment, setComment] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [err,     setErr]     = useState('')
-  const canSubmit = amount.trim() !== '' && parseInt(amount) > 0
-
-  const handleSubmit = async () => {
-    if (!canSubmit || loading) return
-    setLoading(true); setErr('')
-    try { await onConfirm(parseInt(amount), comment) }
-    catch { setErr('Ошибка при сохранении. Попробуйте ещё раз.'); setLoading(false) }
-  }
 
   return (
     <div onClick={onClose} className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 24, padding: '28px 24px 24px', width: '100%', maxWidth: 340, position: 'relative', textAlign: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 24, padding: '24px 22px 22px', width: '100%', maxWidth: 360, maxHeight: 'calc(var(--app-vh, 100vh) * 0.85)', overflowY: 'auto', position: 'relative' }}>
         <button onClick={onClose} style={{ position: 'absolute', top: 14, right: 18, background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#999', lineHeight: 1 }}>✕</button>
 
-        {/* Icon */}
-        <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 18px' }}>
-          <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#FFF0EF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div style={{ fontWeight: 900, fontSize: 19, marginBottom: 4 }}>Завершить проверку</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 18 }}>Можно назначить выплату, штраф — или оба сразу</div>
+
+        {/* Выплата */}
+        <ToggleHeader on={payOn} onToggle={() => setPayOn(v => !v)} color="#34C759" bg="#EDFAF1" title="Начислить выплату"
+          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} />
+
+        {payOn && (
+          <div style={{ margin: '10px 0 4px', paddingLeft: 4 }}>
+            <div onClick={() => setUseRec(true)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer',
+              border: `1.5px solid ${useRec ? '#34C759' : 'var(--border)'}`,
+              background: useRec ? '#F3FBF6' : 'white',
+            }}>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Рекомендованная</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>по карточкам</div>
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 16, color: '#34C759' }}>{recommended.toLocaleString('ru-RU')} ₽</div>
+            </div>
+            <div onClick={() => setUseRec(false)} style={{
+              padding: '10px 14px', borderRadius: 12, cursor: 'pointer',
+              border: `1.5px solid ${!useRec ? '#34C759' : 'var(--border)'}`,
+              background: !useRec ? '#F3FBF6' : 'white',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0 }}>Вручную:</span>
+              <input type="number" inputMode="numeric" value={manual}
+                onChange={e => { setManual(e.target.value.replace(/\D/g, '')); setUseRec(false) }}
+                onFocus={() => setUseRec(false)} placeholder="0"
+                style={{ flex: 1, border: 'none', borderBottom: `1.5px solid ${!useRec ? '#34C759' : 'var(--border)'}`, background: 'transparent', fontSize: 15, fontWeight: 700, outline: 'none', fontFamily: 'inherit', color: 'var(--text-primary)' }} />
+              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)' }}>₽</span>
+            </div>
           </div>
-          <span style={{ position: 'absolute', top: -4, right: -4, color: '#FF3B30', fontSize: 14, fontWeight: 700 }}>+</span>
-          <span style={{ position: 'absolute', top: 10, left: -10, color: '#FFB3B3', fontSize: 11, fontWeight: 700 }}>+</span>
-          <span style={{ position: 'absolute', bottom: -4, right: -8, color: '#FFB3B3', fontSize: 11, fontWeight: 700 }}>+</span>
+        )}
+
+        {/* Штраф */}
+        <div style={{ marginTop: 12 }}>
+          <ToggleHeader on={fineOn} onToggle={() => setFineOn(v => !v)} color="#FF3B30" bg="#FFF0EF" title="Назначить штраф"
+            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>} />
         </div>
 
-        <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 6 }}>Назначить штраф</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>Водитель увидит сумму и причину в своём отчёте</div>
-
-        {/* Amount */}
-        <div style={{ textAlign: 'left', marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Сумма штрафа</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1.5px solid ${canSubmit ? '#FF3B30' : 'var(--border)'}`, borderRadius: 12, padding: '10px 14px' }}>
-            <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g, ''))}
-              placeholder="0"
-              style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 18, fontWeight: 700, outline: 'none', fontFamily: 'inherit', color: '#FF3B30' }} />
-            <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-muted)' }}>₽</span>
+        {fineOn && (
+          <div style={{ margin: '10px 0 4px', paddingLeft: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1.5px solid #FFB3B3', borderRadius: 12, padding: '10px 14px', marginBottom: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0, color: '#FF3B30' }}>Сумма:</span>
+              <input type="number" inputMode="numeric" value={fineAmount} onChange={e => setFineAmount(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 15, fontWeight: 700, outline: 'none', fontFamily: 'inherit', color: '#FF3B30' }} />
+              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)' }}>₽</span>
+            </div>
+            <textarea value={fineReason} onChange={e => setFineReason(e.target.value)}
+              placeholder="Причина (необязательно)"
+              rows={2}
+              style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 12, padding: '10px 14px', fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'none', boxSizing: 'border-box', color: 'var(--text-primary)' }} />
           </div>
-        </div>
+        )}
 
-        {/* Comment */}
-        <div style={{ textAlign: 'left', marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Причина (необязательно)</div>
-          <textarea value={comment} onChange={e => setComment(e.target.value)}
-            placeholder="Например: нарушение расписания..."
-            rows={2}
-            style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 12, padding: '10px 14px', fontSize: 14, fontFamily: 'inherit', outline: 'none', resize: 'none', boxSizing: 'border-box', color: 'var(--text-primary)' }} />
-        </div>
+        {err && <div style={{ color: '#FF3B30', fontSize: 13, marginTop: 14 }}>{err}</div>}
 
-        {err && <div style={{ color: '#FF3B30', fontSize: 13, marginBottom: 10 }}>{err}</div>}
-
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
           <button type="button" onClick={onClose} style={{ flex: 1, padding: '13px', borderRadius: 50, border: '2px solid var(--border)', background: 'white', color: 'var(--text-secondary)', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Отмена</button>
           <button type="button" onClick={handleSubmit}
-            style={{ flex: 1, padding: '13px', borderRadius: 50, border: 'none', background: canSubmit && !loading ? '#FF3B30' : '#ccc', color: 'white', fontWeight: 700, fontSize: 14, cursor: canSubmit && !loading ? 'pointer' : 'default' }}>
-            {loading ? '...' : 'Назначить'}
+            style={{ flex: 1, padding: '13px', borderRadius: 50, border: 'none', background: canSubmit && !loading ? 'var(--orange)' : '#ccc', color: 'white', fontWeight: 700, fontSize: 15, cursor: canSubmit && !loading ? 'pointer' : 'default' }}>
+            {loading ? '...' : 'Сохранить'}
           </button>
         </div>
       </div>
@@ -259,8 +349,7 @@ export default function EntReportDetail() {
   const { id } = useParams()
   const [report, setReport]   = useState<Report | null>(null)
   const [updating, setUpdating] = useState(false)
-  const [showPayModal, setShowPayModal] = useState(false)
-  const [showFineModal, setShowFineModal] = useState(false)
+  const [reviewModal, setReviewModal] = useState<{ pay: boolean; fine: boolean } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showTrips, setShowTrips] = useState(false)
   const navigate = useNavigate()
@@ -272,10 +361,20 @@ export default function EntReportDetail() {
     navigate('/entrepreneur/reports')
   }
 
-  const [trips,     setTrips]     = useState('')
-  const [cards,     setCards]     = useState('')
-  const [condition, setCondition] = useState('')
+  const [trips,       setTrips]       = useState('')
+  const [cards,       setCards]       = useState('')
+  const [condition,   setCondition]   = useState('')
+  const [shiftNumber, setShiftNumber] = useState('')
+  const [plate,       setPlate]       = useState('')
+  const [shiftStart,  setShiftStart]  = useState('')
+  const [shiftEnd,    setShiftEnd]    = useState('')
+  const [routeVehicles, setRouteVehicles] = useState<string[]>([])
+  const [vehiclesLoading, setVehiclesLoading] = useState(false)
   const [edited,    setEdited]    = useState(false)
+
+  // Снимок значений на момент открытия отчёта — по нему решаем, что предприниматель
+  // успел поправить (тогда текст поля красим оранжевым), а что осталось как прислал водитель (чёрным).
+  const originalRef = useRef({ trips: '', cards: '', condition: '', shiftNumber: '', plate: '', shiftStart: '', shiftEnd: '' })
 
   useEffect(() => {
     if (!id) return
@@ -283,37 +382,90 @@ export default function EntReportDetail() {
       const rep = r.data as Report
       setReport(rep)
       const get = parseGet(rep.notes ?? '')
-      setTrips(get('Кругов', String(rep.total_trips)))
-      setCards(get('Карточек', '430'))
-      setCondition(get('ТС', 'исправно'))
+      const initial = {
+        trips: get('Кругов', String(rep.total_trips)),
+        cards: get('Карточек', '430'),
+        condition: get('ТС', 'исправно'),
+        shiftNumber: get('Смена', String(rep.id)),
+        plate: rep.plate_number || get('Гос.номер', ''),
+        shiftStart: rep.shift_start ?? '',
+        shiftEnd: rep.shift_end ?? '',
+      }
+      setTrips(initial.trips)
+      setCards(initial.cards)
+      setCondition(initial.condition)
+      setShiftNumber(initial.shiftNumber)
+      setPlate(initial.plate)
+      setShiftStart(initial.shiftStart)
+      setShiftEnd(initial.shiftEnd)
+      originalRef.current = initial
       setEdited(false)
     }).catch(() => {})
   }, [id])
 
+  // Список ТС маршрута, свободных именно в это время этой даты — учитывает
+  // остальные отчёты за тот же день с пересекающимся временем смены, а не
+  // только сам факт занятости в этот день.
+  useEffect(() => {
+    if (!report?.route_number || !report?.shift_date) { setRouteVehicles([]); return }
+    setVehiclesLoading(true)
+    getAvailableVehiclesForReport({
+      route_number: report.route_number,
+      shift_date: report.shift_date,
+      shift_start: shiftStart || undefined,
+      shift_end: shiftEnd || undefined,
+      exclude_report_id: report.id,
+    }).then(r => {
+      setRouteVehicles((r.data as any[]).map(v => v.plate_number as string))
+    }).catch(() => setRouteVehicles([]))
+      .finally(() => setVehiclesLoading(false))
+  }, [report?.route_number, report?.shift_date, report?.id, shiftStart, shiftEnd])
+
   const markEdited = (setter: (v: string) => void) => (v: string) => { setter(v); setEdited(true) }
+
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+  const NUM_RE  = /^\d+(\.\d+)?$/
+  const INT_RE  = /^\d+$/
+  const CONDITIONS = ['исправно', 'неисправно', 'требует ТО']
+
+  const isShiftStartValid  = shiftStart.trim() === '' || TIME_RE.test(shiftStart.trim())
+  const isShiftEndValid    = shiftEnd.trim() === '' || TIME_RE.test(shiftEnd.trim())
+  const isShiftNumberValid = INT_RE.test(shiftNumber.trim())
+  const isPlateValid       = plate.trim() !== ''
+  const isTripsValid       = NUM_RE.test(trips.trim())
+  const isCardsValid       = INT_RE.test(cards.trim())
+  const isConditionValid   = CONDITIONS.includes(condition)
+  const allValid = isShiftStartValid && isShiftEndValid && isShiftNumberValid && isPlateValid && isTripsValid && isCardsValid && isConditionValid
+
+  const plateOptions = plate && !routeVehicles.includes(plate) ? [plate, ...routeVehicles] : routeVehicles
 
   const recommended = Math.max(0, Math.round((parseInt(cards || '0') * 10) / 100) * 100)
 
-  const handlePay = async (amount: number): Promise<void> => {
-    if (!report) return
-    setUpdating(true)
-    try {
-      const updatedNotes = rebuildNotes(report.notes ?? '', {
-        'Кругов': trips, 'Карточек': cards, 'ТС': condition, 'Выплата': String(amount),
-      })
-      await adjustReport(report.id, edited ? 'adjusted' : 'approved', updatedNotes)
-      navigate('/entrepreneur/reports')
-    } finally { setUpdating(false) }
-  }
+  const editedFields = () => ({
+    notes: { 'Смена': shiftNumber, 'Гос.номер': plate, 'Кругов': trips, 'Карточек': cards, 'ТС': condition },
+    fields: {
+      shift_start: shiftStart, shift_end: shiftEnd, plate_number: plate,
+      total_trips: Number(trips) || 0, total_revenue: Number(cards) * 50 || 0,
+    },
+  })
 
-  const handleFine = async (amount: number, comment: string): Promise<void> => {
-    if (!report) return
+  // Выплата и штраф больше не взаимоисключающие действия: можно назначить любое
+  // из них или оба сразу за один раз. Штраф сам по себе больше не переводит
+  // отчёт в «отклонён» — это просто дополнительное начисление, отчёт всё равно
+  // считается проверенным (approved/adjusted).
+  const handleReview = async (payment: number, fine: number, fineReason: string): Promise<void> => {
+    if (!report || !allValid) return
     setUpdating(true)
     try {
-      const updates: Record<string, string> = { 'Штраф': String(amount) }
-      if (comment.trim()) updates['Причина'] = comment.trim()
+      const { notes, fields } = editedFields()
+      const updates: Record<string, string> = { ...notes }
+      if (payment > 0) updates['Выплата'] = String(payment)
+      if (fine > 0) {
+        updates['Штраф'] = String(fine)
+        if (fineReason) updates['Причина'] = fineReason
+      }
       const updatedNotes = rebuildNotes(report.notes ?? '', updates)
-      await adjustReport(report.id, 'rejected', updatedNotes)
+      await adjustReport(report.id, edited ? 'adjusted' : 'approved', updatedNotes, fields)
       navigate('/entrepreneur/reports')
     } finally { setUpdating(false) }
   }
@@ -368,29 +520,32 @@ export default function EntReportDetail() {
 
         {/* Fields */}
         <div className="card">
-          {report.shift_start && (
-            <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
-              label="Начало смены" value={report.shift_start} editable={false} />
-          )}
-          {report.shift_end && (
-            <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
-              label="Окончание смены" value={report.shift_end} editable={false} />
-          )}
+          <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
+            label="Начало смены" value={shiftStart} editable={isPending} onChange={isPending ? markEdited(setShiftStart) : undefined}
+            validate={v => v.trim() === '' || TIME_RE.test(v.trim())} errorMsg="Формат ЧЧ:ММ" changed={shiftStart !== originalRef.current.shiftStart} mask="time" />
+          <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
+            label="Окончание смены" value={shiftEnd} editable={isPending} onChange={isPending ? markEdited(setShiftEnd) : undefined}
+            validate={v => v.trim() === '' || TIME_RE.test(v.trim())} errorMsg="Формат ЧЧ:ММ" changed={shiftEnd !== originalRef.current.shiftEnd} mask="time" />
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
-            label="Номер смены" value={parseGet(report.notes ?? '')('Смена', String(report.id))} editable={false} />
-          <EditRow icon={<img src="/bus.png" width="20" height="20" />}
-            label="Гос.номер ТС" value={parseGet(report.notes ?? '')('Гос.номер', 'X264MP55')} editable={false} />
+            label="Номер смены" value={shiftNumber} editable={isPending} onChange={isPending ? markEdited(setShiftNumber) : undefined}
+            validate={v => INT_RE.test(v.trim())} errorMsg="Только цифры" inputMode="numeric" changed={shiftNumber !== originalRef.current.shiftNumber} />
+          <VehiclePickerRow icon={<BusIcon size={20} />} label="Гос.номер ТС" value={plate} options={plateOptions}
+            editable={isPending} onChange={isPending ? (v => { setPlate(v); setEdited(true) }) : undefined}
+            loading={vehiclesLoading} emptyText="Нет свободных ТС на это время" changed={plate !== originalRef.current.plate} />
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>}
-            label="Кол-во кругов" value={trips} editable={isPending} onChange={isPending ? markEdited(setTrips) : undefined} />
+            label="Кол-во кругов" value={trips} editable={isPending} onChange={isPending ? markEdited(setTrips) : undefined}
+            validate={v => NUM_RE.test(v.trim())} errorMsg="Число, например 5.5" inputMode="decimal" changed={trips !== originalRef.current.trips} />
           <div className="row-item" style={{ cursor: 'pointer' }} onClick={() => setShowTrips(true)}>
             <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></OIcon>
             <span className="row-label">Время рейсов</span>
             <span className="row-arrow" style={{ color: 'var(--orange)', fontSize: 18 }}>›</span>
           </div>
           <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}
-            label="Кол-во карточек" value={cards} editable={isPending} onChange={isPending ? markEdited(setCards) : undefined} />
-          <EditRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="13 2 13 9 20 9"/><path d="M20 9L13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg>}
-            label="Состояние ТС" value={condition} editable={isPending} onChange={isPending ? markEdited(setCondition) : undefined} />
+            label="Кол-во карточек" value={cards} editable={isPending} onChange={isPending ? markEdited(setCards) : undefined}
+            validate={v => INT_RE.test(v.trim())} errorMsg="Только цифры" inputMode="numeric" changed={cards !== originalRef.current.cards} />
+          <SelectRow icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polyline points="13 2 13 9 20 9"/><path d="M20 9L13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg>}
+            label="Состояние ТС" value={condition} options={CONDITIONS}
+            editable={isPending} onChange={isPending ? (v => { setCondition(v); setEdited(true) }) : undefined} changed={condition !== originalRef.current.condition} />
 
           <div className="row-item" style={{ cursor: 'pointer', background: '#F0F8FF', borderRadius: 10, margin: '4px 0' }}>
             <OIcon><svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><circle cx="12" cy="13" r="2"/><polyline points="10 15 12 17 14 15"/></svg></OIcon>
@@ -401,6 +556,9 @@ export default function EntReportDetail() {
 
         {isPending && edited && (
           <p style={{ fontSize: 12, color: '#007AFF', textAlign: 'center' }}>✏️ Вы изменили поля — отчёт будет отмечен как «скорректирован»</p>
+        )}
+        {isPending && !allValid && (
+          <p style={{ fontSize: 12, color: '#FF3B30', textAlign: 'center' }}>⚠️ Проверьте поля с ошибками перед сохранением</p>
         )}
 
         {/* Начисление / штраф — показываем после проверки */}
@@ -444,12 +602,12 @@ export default function EntReportDetail() {
         {/* Action buttons */}
         {isPending && (
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <button onClick={() => setShowPayModal(true)} disabled={updating}
-              style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: '2px solid #34C759', background: 'white', color: '#34C759', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <button onClick={() => setReviewModal({ pay: true, fine: false })} disabled={updating || !allValid}
+              style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: `2px solid ${allValid ? '#34C759' : '#ccc'}`, background: 'white', color: allValid ? '#34C759' : '#999', fontWeight: 700, fontSize: 14, cursor: (updating || !allValid) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: allValid ? 1 : 0.6 }}>
               <span style={{ fontSize: 18, fontWeight: 900 }}>+</span> Начислить<br/>выплату
             </button>
-            <button onClick={() => setShowFineModal(true)} disabled={updating}
-              style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: '2px solid #FFB3B3', background: '#FFF5F5', color: '#FF3B30', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <button onClick={() => setReviewModal({ pay: false, fine: true })} disabled={updating || !allValid}
+              style={{ flex: 1, padding: '14px 8px', borderRadius: 50, border: `2px solid ${allValid ? '#FFB3B3' : '#ccc'}`, background: allValid ? '#FFF5F5' : '#F5F5F5', color: allValid ? '#FF3B30' : '#999', fontWeight: 700, fontSize: 14, cursor: (updating || !allValid) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: allValid ? 1 : 0.6 }}>
               <span style={{ fontSize: 18, fontWeight: 900 }}>−</span> Назначить штраф
             </button>
           </div>
@@ -494,11 +652,9 @@ export default function EntReportDetail() {
         </div>
       )}
 
-      {showPayModal && (
-        <PayModal recommended={recommended} onConfirm={handlePay} onClose={() => setShowPayModal(false)} />
-      )}
-      {showFineModal && (
-        <FineModal onConfirm={handleFine} onClose={() => setShowFineModal(false)} />
+      {reviewModal && (
+        <ReviewModal recommended={recommended} initialPay={reviewModal.pay} initialFine={reviewModal.fine}
+          onConfirm={handleReview} onClose={() => setReviewModal(null)} />
       )}
       {showTrips && <TripsModal reportId={report.id} onClose={() => setShowTrips(false)} />}
     </div>

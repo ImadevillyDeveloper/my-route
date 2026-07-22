@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getVehicles, getRoutes, createVehicle, updateInsurance, updateMaintenance, getDrivers, updateDriver, uploadVehiclePhoto } from '../../api/client'
 import { formatPlate } from '../../utils/format'
+import BusIcon from '../../components/common/BusIcon'
 
 const abbr = (n: string) => {
   const p = n.trim().split(/\s+/)
@@ -467,7 +468,7 @@ export default function EntVehicleAdd() {
           <div style={{ background: 'white', borderRadius: 24, padding: '32px 28px 28px', width: '100%', maxWidth: 340, textAlign: 'center' }}>
             <div style={{ position: 'relative', width: 90, height: 90, margin: '0 auto 20px' }}>
               <div style={{ width: 90, height: 90, borderRadius: '50%', background: '#FFF3EE', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                <img src="/bus.png" width="44" height="44" />
+                <BusIcon size={44} />
                 <div style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: '50%', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>

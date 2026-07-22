@@ -54,6 +54,7 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         _add_col(conn, "users",         "terminal_stops_json", "TEXT")
         _add_col(conn, "users",         "active_shift_vehicle_plate", "VARCHAR")
         _add_col(conn, "users",         "is_partner",           "BOOLEAN DEFAULT 0")
+        _add_col(conn, "users",         "schedule_routes_json", "TEXT")
 else:
     # Postgres (Supabase) — same idea, but ALTER TABLE ... ADD COLUMN IF NOT EXISTS
     # is native syntax here, so no manual PRAGMA check is needed.
@@ -136,6 +137,12 @@ else:
         ))
         conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_partner BOOLEAN DEFAULT FALSE"
+        ))
+        conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS schedule_routes_json TEXT"
+        ))
+        conn.execute(text(
+            "ALTER TABLE reports ALTER COLUMN total_trips TYPE DOUBLE PRECISION"
         ))
         conn.commit()
 

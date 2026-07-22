@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, getRoutes, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle, resolveAssetUrl } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 import { useAuthStore } from '../../store/auth'
 import { formatPlate } from '../../utils/format'
 
@@ -275,7 +276,7 @@ export default function EntVehicleDetail() {
             style={{ width: 68, height: 68, background: '#E8E8E8', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
             {photo
               ? <img src={photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <img src="/bus.png" width="38" height="38" style={{ opacity: 0.35 }} />
+              : <BusIcon size={38} style={{ opacity: 0.35 }} />
             }
             <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
           </div>

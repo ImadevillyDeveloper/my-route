@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getDrivers, updateDriver, deleteDriver, uploadDriverPhoto, getVehicles, getRoutes, resolveAssetUrl } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 import { formatPhone, formatVU } from '../../utils/format'
 import { useAuthStore } from '../../store/auth'
 
@@ -304,7 +305,7 @@ export default function EntDriverDetail() {
             dataAttr="data-driver-route-drop"
           />
           <DropdownRow
-            icon={<img src="/bus.png" width="20" height="20" />}
+            icon={<BusIcon size={20} />}
             label="Гос. номер ТС"
             value={driver.plate_number ?? '—'}
             options={platesToShow}

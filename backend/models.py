@@ -75,6 +75,7 @@ class User(Base):
     gps_updated_at     = Column(UTCDateTime, nullable=True)
     active_trip_id      = Column(Integer, nullable=True)  # id открытого сейчас "рейса" (Trip.id), переживает перезагрузку страницы
     terminal_stops_json = Column(Text, nullable=True)     # {"<конечная>": {"stop_name","lat","lng"}, ...} — личная настройка остановки-ориентира на конечной
+    schedule_routes_json = Column(Text, nullable=True)    # JSON-массив маршрутов из числа конкурентных, которые показывать в расписании на конечной; NULL = показывать все конкурентные
     active_shift_vehicle_plate = Column(String, nullable=True)  # ТС выбранное водителем ТОЛЬКО на текущую смену (не меняет постоянное vehicle_plate)
     is_partner = Column(Boolean, default=False, nullable=True)  # метка "партнёр проекта" — назначается только админом
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -136,7 +137,7 @@ class Report(Base):
     shift_date = Column(Date, nullable=False)
     shift_start = Column(String, nullable=True)
     shift_end = Column(String, nullable=True)
-    total_trips = Column(Integer, default=0)
+    total_trips = Column(Float, default=0)  # кол-во кругов — не округляется, может быть дробным (напр. 5.5)
     total_revenue = Column(Float, default=0.0)
     fuel_cost = Column(Float, default=0.0)
     notes = Column(Text, nullable=True)

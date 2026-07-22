@@ -5,6 +5,7 @@ import {
   type NamedStop, type Trip, type StopSchedule, type RouteVehicle,
 } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
+import BusIcon from '../../components/common/BusIcon'
 
 declare global { interface Window { ymaps: any } }
 
@@ -68,6 +69,7 @@ const ANIM_DURATION_MS = 8000  // spread movement over 8 s (< 10 s poll interval
 const TRIP_ARRIVAL_RADIUS_M = 150  // метров — в этом радиусе от конечной считаем, что водитель "прибыл"
 const TRIP_DWELL_S = 25            // секунд непрерывно в радиусе, прежде чем предложить закрыть рейс (отсекает проезд мимо)
 const TRIP_REARM_MULT = 2          // во сколько раз радиуса нужно отъехать, чтобы повторно предложить/засчитать отъезд
+const TRIP_DEPART_DWELL_S = 20     // секунд непрерывно ЗА пределами radius*TRIP_REARM_MULT, прежде чем считать это реальным отъездом (не разовый скачок GPS)
 
 type TerminalKey = 'start' | 'end'
 
@@ -120,18 +122,25 @@ export default function DriverMap() {
   const [activeTripId, setActiveTripId] = useState<number | null>(null)
   const activeTripIdRef = useRef<number | null>(null)
   const terminalCoordsRef = useRef<{ start: NamedStop | null; end: NamedStop | null } | null>(null)
-  const terminalStopsRef  = useRef<Record<string, { stop_name: string; lat: number; lng: number }>>({})
-  const arrivalRef = useRef<Record<TerminalKey, { dwellStart: number | null; prompted: boolean }>>({
-    start: { dwellStart: null, prompted: false },
-    end:   { dwellStart: null, prompted: false },
+  const terminalStopsRef  = useRef<Record<string, { stop_name: string; lat: number; lng: number; st_id?: string | null }>>({})
+  const arrivalRef = useRef<Record<TerminalKey, { dwellStart: number | null; prompted: boolean; departStart: number | null }>>({
+    start: { dwellStart: null, prompted: false, departStart: null },
+    end:   { dwellStart: null, prompted: false, departStart: null },
   })
   const pendingDepartureRef = useRef<TerminalKey | null>(null)
   const shiftStartRef = useRef<string>('')  // ISO active_shift_start текущей смены — передаём явно при открытии рейса, чтобы не гоняться за ещё не закоммиченным значением на сервере
   const [arrivalPrompt, setArrivalPrompt] = useState<{ key: TerminalKey; name: string } | null>(null)
   const [tripClosedCard, setTripClosedCard] = useState<{
-    trip: Trip; terminalName: string; schedule: StopSchedule | null; loadingSchedule: boolean
+    trip: Trip; terminalName: string; key: TerminalKey; schedule: StopSchedule | null; loadingSchedule: boolean
   } | null>(null)
+  const [tripCardMinimized, setTripCardMinimized] = useState(false)
+  const [manualCloseConfirm, setManualCloseConfirm] = useState(false)
   const [focusedRoute, setFocusedRoute] = useState<string | null>(null)
+
+  // ── Ручное переопределение направления, определённого автоматически (Навитранс) ──
+  const [dirSwitchConfirm, setDirSwitchConfirm] = useState(false)
+  const manualDirOverrideUntilRef = useRef<number>(0)
+  const DIR_OVERRIDE_COOLDOWN_MS = 90000  // на это время после ручного переключения не даём автосинку Навитранса перезаписать выбор водителя
 
   // ── Выбор ТС на смену (временная подмена, не меняет назначенное предпринимателем) ──
   const [selectedVehiclePlate, setSelectedVehiclePlate] = useState<string | null>(null)
@@ -261,16 +270,22 @@ export default function DriverMap() {
 
   const shortLabel = (s: string) => s.length > 16 ? s.slice(0, 15) + '…' : s
 
-  const openTripClosedCard = (trip: Trip, terminalName: string) => {
-    setTripClosedCard({ trip, terminalName, schedule: null, loadingSchedule: true })
+  const openTripClosedCard = (trip: Trip, terminalName: string, key: TerminalKey) => {
+    setTripClosedCard({ trip, terminalName, key, schedule: null, loadingSchedule: true })
+    setTripCardMinimized(false)
     const mapping = terminalStopsRef.current[terminalName]
     const tc = terminalCoordsRef.current
     const fallbackCoords = terminalName === routeTerminalsRef.current?.start ? tc?.start : tc?.end
     const stopName = mapping?.stop_name ?? terminalName
     const lat = mapping?.lat ?? fallbackCoords?.lat
     const lng = mapping?.lng ?? fallbackCoords?.lng
+    // st_id берём от fallback-конечной, только если у водителя вообще нет личной
+    // настройки остановки-ориентира — если настройка есть, но сохранена ДО того как
+    // мы стали хранить st_id, не подставляем id конечной (это была бы схема другой
+    // остановки), лучше честно показать "нет данных", пока не переизберут в Настройках.
+    const stId = mapping ? mapping.st_id : fallbackCoords?.st_id
     if (lat != null && lng != null) {
-      getStopSchedule(stopName, lat, lng).then(res => {
+      getStopSchedule(stopName, lat, lng, stId).then(res => {
         setTripClosedCard(prev => (prev && prev.trip.id === trip.id) ? { ...prev, schedule: res.data, loadingSchedule: false } : prev)
       }).catch(() => {
         setTripClosedCard(prev => (prev && prev.trip.id === trip.id) ? { ...prev, loadingSchedule: false } : prev)
@@ -291,15 +306,69 @@ export default function DriverMap() {
       setActiveTripId(null)
       pendingDepartureRef.current = key
       setArrivalPrompt(null)
-      openTripClosedCard(res.data, terminalName)
+      openTripClosedCard(res.data, terminalName, key)
     } catch {}
   }
 
-  const manualCloseTrip = () => {
+  const manualCloseTrip = () => setManualCloseConfirm(true)
+
+  const confirmManualCloseTrip = () => {
+    setManualCloseConfirm(false)
     // Закрываем на той конечной, к которой сейчас едем — направление уже известно,
     // даже если GPS слабый и автоопределение по радиусу не сработало.
     const key: TerminalKey = directionRef.current === 'forward' ? 'end' : 'start'
     closeCurrentTrip(key, 'manual')
+  }
+
+  // Открывает следующий рейс от конечной key — используется и автоматически (отъезд
+  // по GPS), и вручную (кнопка "Начать новый рейс"), чтобы не дублировать логику.
+  const startNextTrip = (key: TerminalKey) => {
+    pendingDepartureRef.current = null
+    const newDirection: 'forward' | 'back' = key === 'start' ? 'forward' : 'back'
+    switchDirection(newDirection)
+    const terminals = routeTerminalsRef.current
+    const departedFrom = key === 'start' ? terminals?.start : terminals?.end
+    if (driverRouteRef.current !== '—' && departedFrom) {
+      openTrip(driverRouteRef.current, departedFrom, newDirection, shiftStartRef.current).then(res => {
+        activeTripIdRef.current = res.data.id
+        setActiveTripId(res.data.id)
+      }).catch(() => {})
+    }
+  }
+
+  const manualStartNextTrip = () => {
+    if (!tripClosedCard) return
+    startNextTrip(tripClosedCard.key)
+    setTripClosedCard(null)
+    setTripCardMinimized(false)
+  }
+
+  // Резервный способ начать рейс, когда карточки "Рейс закрыт" уже нет (например,
+  // водитель уходил на другой экран и вернулся — карточка живёт только в памяти
+  // страницы карты и не переживает переход по вкладкам). Конечная определяется по
+  // GPS (ближайшая из двух), а если позиции нет — по последнему известному направлению.
+  const startTripFromNearestTerminal = () => {
+    const terminals = routeTerminalsRef.current
+    if (!terminals) return
+    const pos = positionRef.current
+    const tc = terminalCoordsRef.current
+    let key: TerminalKey
+    if (pos && tc?.start && tc?.end) {
+      const dStart = haversineKm(pos.lat, pos.lng, tc.start.lat, tc.start.lng)
+      const dEnd   = haversineKm(pos.lat, pos.lng, tc.end.lat, tc.end.lng)
+      key = dEnd < dStart ? 'end' : 'start'
+    } else {
+      key = directionRef.current === 'forward' ? 'end' : 'start'
+    }
+    startNextTrip(key)
+    setTripClosedCard(null)
+    setTripCardMinimized(false)
+  }
+
+  const confirmSwitchDirection = () => {
+    setDirSwitchConfirm(false)
+    manualDirOverrideUntilRef.current = Date.now() + DIR_OVERRIDE_COOLDOWN_MS
+    switchDirection(directionRef.current === 'forward' ? 'back' : 'forward')
   }
 
   useEffect(() => {
@@ -405,8 +474,10 @@ export default function DriverMap() {
         setNavDriverPos(np)
         setNavDirection(myVeh.direction || null)
         setIsNavTracked(true)
-        // Синхронизируем ручной переключатель с реальным направлением
-        if (myVeh.direction && routeTerminals) {
+        // Синхронизируем ручной переключатель с реальным направлением — если только
+        // водитель только что не переопределил направление вручную (даём его выбору
+        // немного времени, чтобы не перезаписать его тем же тактом опроса).
+        if (myVeh.direction && routeTerminals && Date.now() > manualDirOverrideUntilRef.current) {
           const dest = (myVeh.direction as string).split(' → ')[1]?.trim() ?? ''
           const d = dest.toLowerCase().includes(routeTerminals.end.toLowerCase().slice(0, 6)) ? 'forward' : 'back'
           if (directionRef.current !== d) {
@@ -479,23 +550,23 @@ export default function DriverMap() {
             const name = terminals ? (key === 'start' ? terminals.start : terminals.end) : ''
             setArrivalPrompt({ key, name })
           }
+          st.departStart = null
         } else {
           st.dwellStart = null
           st.prompted = false
           // Отъехали от конечной, где только что закрыли рейс — считаем это выездом:
-          // автонаправление + открытие следующего рейса.
+          // автонаправление + открытие следующего рейса. Требуем непрерывного
+          // нахождения за порогом TRIP_DEPART_DWELL_S секунд, иначе разовый скачок
+          // (погрешность GPS, особенно на десктопе) мог бы переоткрыть рейс мгновенно.
           if (pendingDepartureRef.current === key && distM > TRIP_ARRIVAL_RADIUS_M * TRIP_REARM_MULT) {
-            pendingDepartureRef.current = null
-            const newDirection: 'forward' | 'back' = key === 'start' ? 'forward' : 'back'
-            switchDirection(newDirection)
-            const terminals = routeTerminalsRef.current
-            const departedFrom = key === 'start' ? terminals?.start : terminals?.end
-            if (driverRouteRef.current !== '—' && departedFrom) {
-              openTrip(driverRouteRef.current, departedFrom, newDirection, shiftStartRef.current).then(res => {
-                activeTripIdRef.current = res.data.id
-                setActiveTripId(res.data.id)
-              }).catch(() => {})
+            if (st.departStart == null) {
+              st.departStart = Date.now()
+            } else if (Date.now() - st.departStart >= TRIP_DEPART_DWELL_S * 1000) {
+              st.departStart = null
+              startNextTrip(key)
             }
+          } else {
+            st.departStart = null
           }
         }
       })
@@ -796,7 +867,7 @@ export default function DriverMap() {
               <span className="row-value">{name || '—'}</span>
             </div>
             <div className="row-item" style={{ cursor: 'pointer' }} onClick={openVehiclePicker}>
-              <div className="row-icon"><img src="/bus.png" width="20" height="20" /></div>
+              <div className="row-icon"><BusIcon size={20} /></div>
               <span className="row-label">Гос. номер ТС</span>
               <span className="row-value" style={{ color: plate !== '—' ? 'var(--orange)' : undefined }}>
                 {plate}{isSwappedPlate && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> (на смену)</span>}
@@ -1066,7 +1137,8 @@ export default function DriverMap() {
       <div className="map-info-bar" style={{ background: 'white', borderTop: '1px solid var(--border)', padding: '12px 14px', paddingBottom: 'calc(12px + var(--nav-safe))' }}>
         {/* Направление движения */}
         {isNavTracked ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, background: '#F0FBF4', borderRadius: 20, padding: '7px 12px' }}>
+          <div onClick={() => navDirection && setDirSwitchConfirm(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, background: '#F0FBF4', borderRadius: 20, padding: '7px 12px', cursor: navDirection ? 'pointer' : 'default' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
             <span style={{ fontSize: 12, fontWeight: 700, color: '#1E7A38', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {navDirection ?? 'Направление определяется...'}
@@ -1093,6 +1165,21 @@ export default function DriverMap() {
             style={{ width: '100%', marginBottom: 10, padding: '8px 10px', borderRadius: 12, border: '1.5px solid var(--orange)', background: 'white', color: 'var(--orange)', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             📍 Закрыть рейс вручную
           </button>
+        )}
+
+        {!activeTripId && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {tripClosedCard && tripCardMinimized && (
+              <button onClick={() => setTripCardMinimized(false)}
+                style={{ flex: 1, padding: '8px 10px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                📋 Посмотреть прогноз
+              </button>
+            )}
+            <button onClick={startTripFromNearestTerminal}
+              style={{ flex: 1, padding: '8px 10px', borderRadius: 12, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+              ▶ Начать новый рейс
+            </button>
+          </div>
         )}
 
         {hintsEnabled && (() => {
@@ -1154,18 +1241,17 @@ export default function DriverMap() {
         </div>
       )}
 
-      {tripClosedCard && (
-        <div onClick={() => setTripClosedCard(null)}
+      {tripClosedCard && !tripCardMinimized && (
+        <div
           className="map-overlay" style={{
             position: 'fixed', inset: 0, zIndex: 999,
             background: 'rgba(20,20,20,0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
           }}>
-          <div onClick={e => e.stopPropagation()}
+          <div
             style={{ background: 'white', borderRadius: 20, padding: '20px 24px', width: '100%', maxWidth: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div style={{ marginBottom: 4 }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>Рейс закрыт: {tripClosedCard.terminalName}</span>
-              <button onClick={() => setTripClosedCard(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
             </div>
             {tripClosedCard.trip.started_at && (
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
@@ -1193,11 +1279,11 @@ export default function DriverMap() {
             </div>
 
             {rivals2.length > 0 && (
-              <div>
+              <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>Другие маршруты на карте</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {rivals2.map(r => (
-                    <button key={r} onClick={() => { setFocusedRoute(r); setTripClosedCard(null) }}
+                    <button key={r} onClick={() => { setFocusedRoute(r); setTripCardMinimized(true) }}
                       style={{ background: '#FFF3EE', border: 'none', borderRadius: 20, padding: '6px 12px', fontSize: 13, fontWeight: 700, color: 'var(--orange)', cursor: 'pointer' }}>
                       №{r}
                     </button>
@@ -1205,6 +1291,58 @@ export default function DriverMap() {
                 </div>
               </div>
             )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setTripCardMinimized(true)}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                🗺 Посмотреть карту
+              </button>
+              <button onClick={manualStartNextTrip}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                ▶ Начать новый рейс
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualCloseConfirm && (
+        <div onClick={() => setManualCloseConfirm(false)}
+          className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: 20, padding: '22px 22px', width: '100%', maxWidth: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.22)', textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 18 }}>Закрыть текущий рейс?</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setManualCloseConfirm(false)}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Отмена
+              </button>
+              <button onClick={confirmManualCloseTrip}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Закрыть рейс
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dirSwitchConfirm && (
+        <div onClick={() => setDirSwitchConfirm(false)}
+          className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: 20, padding: '22px 22px', width: '100%', maxWidth: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.22)', textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Хотите сменить направление?</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 18 }}>Сейчас: {navDirection}</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setDirSwitchConfirm(false)}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Отмена
+              </button>
+              <button onClick={confirmSwitchDirection}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Сменить
+              </button>
+            </div>
           </div>
         </div>
       )}

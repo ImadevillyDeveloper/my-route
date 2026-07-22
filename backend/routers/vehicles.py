@@ -1,5 +1,6 @@
 import os, random
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
@@ -46,6 +47,67 @@ def list_vehicles(
     if current_user.role == models.UserRole.entrepreneur:
         q = q.filter(models.Vehicle.owner_id == current_user.id)
     return [_vehicle_out(v, db) for v in q.all()]
+
+
+@router.get("/available-for-report", response_model=list[schemas.VehicleOut])
+def get_available_vehicles_for_report(
+    route_number: str = Query(...),
+    shift_date: date = Query(...),
+    shift_start: Optional[str] = Query(default=None),
+    shift_end: Optional[str] = Query(default=None),
+    exclude_report_id: Optional[int] = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """ТС маршрута, свободные в указанную дату/время — исключает машины,
+    занятые ДРУГИМ отчётом в этот день с пересекающимся временем смены
+    (сравнение по минутам, не только по дате)."""
+    route = db.query(models.Route).filter(models.Route.number == route_number).first()
+    if not route:
+        return []
+    q = db.query(models.Vehicle).filter(models.Vehicle.route_id == route.id)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Vehicle.owner_id == current_user.id)
+    vehicles = q.all()
+
+    def _to_min(t: Optional[str]) -> Optional[int]:
+        if not t:
+            return None
+        try:
+            h, m = t.split(":")[:2]
+            return int(h) * 60 + int(m)
+        except Exception:
+            return None
+
+    new_start, new_end = _to_min(shift_start), _to_min(shift_end)
+
+    other_reports_q = db.query(models.Report).filter(
+        models.Report.shift_date == shift_date,
+        models.Report.vehicle_id.isnot(None),
+    )
+    if exclude_report_id:
+        other_reports_q = other_reports_q.filter(models.Report.id != exclude_report_id)
+    other_reports = other_reports_q.all()
+
+    busy_ids: set = set()
+    for r in other_reports:
+        os_, oe_ = _to_min(r.shift_start), _to_min(r.shift_end)
+        if new_start is not None and new_end is not None and new_end > new_start:
+            # знаем время нового отчёта — сравниваем пересечение интервалов;
+            # если у ДРУГОГО отчёта время неполное/некорректное — не считаем
+            # это конфликтом (лучше показать ТС, чем спрятать доступное из-за
+            # старых неполных данных)
+            if os_ is None or oe_ is None or oe_ <= os_:
+                continue
+            if new_start < oe_ and os_ < new_end:
+                busy_ids.add(r.vehicle_id)
+        else:
+            # время нового отчёта неизвестно — исключаем ТС, занятые в этот день,
+            # это самый безопасный вариант, когда сравнивать интервалы не с чем
+            busy_ids.add(r.vehicle_id)
+
+    available = [v for v in vehicles if v.id not in busy_ids]
+    return [_vehicle_out(v, db) for v in available]
 
 
 @router.get("/map", response_model=list[schemas.VehicleMapOut])

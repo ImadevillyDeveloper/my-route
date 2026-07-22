@@ -1,5 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useUnreadChatCount } from '../chat/useUnreadChatCount'
+import BusIcon from '../common/BusIcon'
 
 const CHAT_BADGE = (unread: number) => unread > 0 && (
   <span style={{ position: 'absolute', top: -3, right: -3, background: '#FF3B30', color: 'white', fontSize: 9, fontWeight: 700, borderRadius: 8, minWidth: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '1.5px solid white' }}>
@@ -10,9 +11,7 @@ const CHAT_BADGE = (unread: number) => unread > 0 && (
 const navItems = [
   {
     to: '/entrepreneur/map', label: 'Маршрут',
-    icon: (a: boolean) => (
-      <img src="/bus.png" width="22" height="22" style={{ filter: a ? 'none' : 'grayscale(1) brightness(1.3)' }} />
-    )
+    icon: (a: boolean) => <BusIcon size={22} color={a ? 'var(--orange)' : '#AAA'} />
   },
   {
     to: '/entrepreneur/profile', label: 'Мой ЛК',
@@ -60,7 +59,7 @@ export default function EntrepreneurLayout() {
     <div className="layout-root">
       <aside className="sidebar-nav">
         <div className="sidebar-logo">
-          <img src="/bus.png" width="36" height="36" />
+          <BusIcon size={36} />
           <div>
             <div className="sidebar-logo-name">Мой.Маршрут</div>
             <div className="sidebar-logo-role">Предприниматель</div>
