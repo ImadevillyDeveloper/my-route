@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   getRivalsLive, computeCompetitorMapping, requestRecommendation, getMe, getRoutes, updateMe, getHint, getNearestStop, postGpsPosition,
-  getRouteTerminalCoords, openTrip, closeTrip, getStopSchedule, getMyRouteVehicles, startShift as startShiftApi,
+  getRouteTerminalCoords, openTrip, closeTrip, overrideTrip, forgetTrip, getStopSchedule, getMyRouteVehicles, startShift as startShiftApi,
   type NamedStop, type Trip, type StopSchedule, type RouteVehicle,
 } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import BusIcon from '../../components/common/BusIcon'
+import { isTripErroneous, tripDurationMin } from '../../utils/trips'
 
 declare global { interface Window { ymaps: any } }
 
@@ -123,18 +124,26 @@ export default function DriverMap() {
   const activeTripIdRef = useRef<number | null>(null)
   const terminalCoordsRef = useRef<{ start: NamedStop | null; end: NamedStop | null } | null>(null)
   const terminalStopsRef  = useRef<Record<string, { stop_name: string; lat: number; lng: number; st_id?: string | null }>>({})
-  const arrivalRef = useRef<Record<TerminalKey, { dwellStart: number | null; prompted: boolean; departStart: number | null }>>({
-    start: { dwellStart: null, prompted: false, departStart: null },
-    end:   { dwellStart: null, prompted: false, departStart: null },
+  const arrivalRef = useRef<Record<TerminalKey, { dwellStart: number | null; prompted: boolean; departStart: number | null; departPrompted: boolean }>>({
+    start: { dwellStart: null, prompted: false, departStart: null, departPrompted: false },
+    end:   { dwellStart: null, prompted: false, departStart: null, departPrompted: false },
   })
   const pendingDepartureRef = useRef<TerminalKey | null>(null)
   const shiftStartRef = useRef<string>('')  // ISO active_shift_start текущей смены — передаём явно при открытии рейса, чтобы не гоняться за ещё не закоммиченным значением на сервере
   const [arrivalPrompt, setArrivalPrompt] = useState<{ key: TerminalKey; name: string } | null>(null)
+  // Рейс никогда не открывается сам — GPS лишь предлагает баннером "Начать
+  // рейс?" (авто-отъезд от конечной), а кнопки на карте всегда идут через
+  // модалку-подтверждение (openTripConfirm), прежде чем реально дёрнуть API.
+  const [departurePrompt, setDeparturePrompt] = useState<{ key: TerminalKey; name: string } | null>(null)
+  const [openTripConfirm, setOpenTripConfirm] = useState<{ key: TerminalKey; name: string } | null>(null)
   const [tripClosedCard, setTripClosedCard] = useState<{
     trip: Trip; terminalName: string; key: TerminalKey; schedule: StopSchedule | null; loadingSchedule: boolean
   } | null>(null)
   const [tripCardMinimized, setTripCardMinimized] = useState(false)
   const [manualCloseConfirm, setManualCloseConfirm] = useState(false)
+  const [forgetTripConfirm, setForgetTripConfirm] = useState(false)
+  const [overridingTrip, setOverridingTrip] = useState(false)
+  const [forgettingTrip, setForgettingTrip] = useState(false)
   const [focusedRoute, setFocusedRoute] = useState<string | null>(null)
 
   // ── Ручное переопределение направления, определённого автоматически (Навитранс) ──
@@ -226,24 +235,9 @@ export default function DriverMap() {
       setDriverInfo((prev: any) => ({ ...(prev ?? {}), ...res.data }))
       shiftStartRef.current = res.data.active_shift_start
       setShiftStarted(true)
-
-      // Открываем первый рейс смены сразу — конечная выбирается по ближайшей к
-      // текущей GPS-позиции, если она уже известна, иначе — по умолчанию.
-      const terminals = routeTerminalsRef.current
-      if (driverRoute !== '—' && terminals) {
-        const pos = positionRef.current
-        const tc = terminalCoordsRef.current
-        let startTerminal = terminals.start
-        if (pos && tc?.start && tc?.end) {
-          const dStart = haversineKm(pos.lat, pos.lng, tc.start.lat, tc.start.lng)
-          const dEnd   = haversineKm(pos.lat, pos.lng, tc.end.lat, tc.end.lng)
-          startTerminal = dEnd < dStart ? terminals.end : terminals.start
-        }
-        openTrip(driverRoute, startTerminal, directionRef.current, shiftStartRef.current).then(res => {
-          activeTripIdRef.current = res.data.id
-          setActiveTripId(res.data.id)
-        }).catch(() => {})
-      }
+      // Первый рейс смены НЕ открываем автоматически — водитель подтверждает
+      // старт сам кнопкой "Начать новый рейс" (см. requestStartTrip), чтобы
+      // рейс никогда не открывался незаметно для него.
     } catch (e: any) {
       setShiftError(
         e?.response?.status === 409
@@ -336,11 +330,16 @@ export default function DriverMap() {
     }
   }
 
+  const terminalNameFor = (key: TerminalKey): string => {
+    const terminals = routeTerminalsRef.current
+    return (key === 'start' ? terminals?.start : terminals?.end) ?? ''
+  }
+
+  // Кнопки "Начать новый рейс" никогда не открывают рейс сразу — только
+  // запрашивают подтверждение (confirmOpenTrip реально дёргает API).
   const manualStartNextTrip = () => {
     if (!tripClosedCard) return
-    startNextTrip(tripClosedCard.key)
-    setTripClosedCard(null)
-    setTripCardMinimized(false)
+    setOpenTripConfirm({ key: tripClosedCard.key, name: terminalNameFor(tripClosedCard.key) })
   }
 
   // Резервный способ начать рейс, когда карточки "Рейс закрыт" уже нет (например,
@@ -360,9 +359,43 @@ export default function DriverMap() {
     } else {
       key = directionRef.current === 'forward' ? 'end' : 'start'
     }
-    startNextTrip(key)
+    setOpenTripConfirm({ key, name: terminalNameFor(key) })
+  }
+
+  const confirmOpenTrip = () => {
+    if (!openTripConfirm) return
+    startNextTrip(openTripConfirm.key)
+    setOpenTripConfirm(null)
     setTripClosedCard(null)
     setTripCardMinimized(false)
+  }
+
+  // Баннер авто-обнаруженного отъезда от конечной — тоже требует явного тапа
+  // "Начать", сам по себе рейс не открывает (см. checkArrival/departurePrompt).
+  const confirmDeparture = () => {
+    if (!departurePrompt) return
+    startNextTrip(departurePrompt.key)
+    setDeparturePrompt(null)
+  }
+
+  const markTripClosedCardValid = async () => {
+    if (!tripClosedCard) return
+    setOverridingTrip(true)
+    try {
+      const res = await overrideTrip(tripClosedCard.trip.id, true)
+      setTripClosedCard(prev => prev ? { ...prev, trip: res.data } : prev)
+    } catch {} finally { setOverridingTrip(false) }
+  }
+
+  const doForgetTrip = async () => {
+    if (!tripClosedCard) return
+    setForgettingTrip(true)
+    try {
+      await forgetTrip(tripClosedCard.trip.id)
+      setForgetTripConfirm(false)
+      setTripClosedCard(null)
+      setTripCardMinimized(false)
+    } catch {} finally { setForgettingTrip(false) }
   }
 
   const confirmSwitchDirection = () => {
@@ -551,19 +584,22 @@ export default function DriverMap() {
             setArrivalPrompt({ key, name })
           }
           st.departStart = null
+          st.departPrompted = false
         } else {
           st.dwellStart = null
           st.prompted = false
-          // Отъехали от конечной, где только что закрыли рейс — считаем это выездом:
-          // автонаправление + открытие следующего рейса. Требуем непрерывного
-          // нахождения за порогом TRIP_DEPART_DWELL_S секунд, иначе разовый скачок
-          // (погрешность GPS, особенно на десктопе) мог бы переоткрыть рейс мгновенно.
+          // Отъехали от конечной, где только что закрыли рейс — предлагаем баннером
+          // начать следующий рейс (сам он не открывается — см. departurePrompt).
+          // Требуем непрерывного нахождения за порогом TRIP_DEPART_DWELL_S секунд,
+          // иначе разовый скачок GPS (особенно на десктопе) мог бы предложить это мгновенно.
           if (pendingDepartureRef.current === key && distM > TRIP_ARRIVAL_RADIUS_M * TRIP_REARM_MULT) {
             if (st.departStart == null) {
               st.departStart = Date.now()
-            } else if (Date.now() - st.departStart >= TRIP_DEPART_DWELL_S * 1000) {
-              st.departStart = null
-              startNextTrip(key)
+            } else if (!st.departPrompted && Date.now() - st.departStart >= TRIP_DEPART_DWELL_S * 1000) {
+              st.departPrompted = true
+              const terminals = routeTerminalsRef.current
+              const name = terminals ? (key === 'start' ? terminals.start : terminals.end) : ''
+              setDeparturePrompt({ key, name })
             }
           } else {
             st.departStart = null
@@ -1014,10 +1050,12 @@ export default function DriverMap() {
     )
   }
 
+  const tripErroneous = tripClosedCard ? isTripErroneous(tripClosedCard.trip) : false
+
   return (
     <div className="map-page-root" style={{ display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, height: 'var(--app-vh, 100dvh)', overflow: 'hidden' }}>
 
-      <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ background: 'var(--orange)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 1000 }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
         <div style={{ flex: 1 }}>
           <div style={{ color: 'white', fontWeight: 800, fontSize: 16 }}>Мой.Маршрут</div>
@@ -1097,7 +1135,7 @@ export default function DriverMap() {
         )}
 
         {arrivalPrompt && (
-          <div style={{ position: 'absolute', top: 56, left: 12, right: 12, zIndex: 11 }}>
+          <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 11 }}>
             <div style={{ background: '#1C1C1E', borderRadius: 14, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
               <span style={{ fontSize: 18 }}>📍</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'white', flex: 1, lineHeight: 1.4 }}>
@@ -1110,6 +1148,25 @@ export default function DriverMap() {
               <button onClick={() => closeCurrentTrip(arrivalPrompt.key, 'gps')}
                 style={{ background: 'var(--orange)', border: 'none', borderRadius: 20, padding: '6px 12px', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
                 Закрыть
+              </button>
+            </div>
+          </div>
+        )}
+
+        {departurePrompt && (
+          <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 11 }}>
+            <div style={{ background: '#1C1C1E', borderRadius: 14, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+              <span style={{ fontSize: 18 }}>📍</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'white', flex: 1, lineHeight: 1.4 }}>
+                Вы отъехали от «{departurePrompt.name}». Начать новый рейс?
+              </span>
+              <button onClick={() => setDeparturePrompt(null)}
+                style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 20, padding: '6px 10px', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                Позже
+              </button>
+              <button onClick={confirmDeparture}
+                style={{ background: 'var(--orange)', border: 'none', borderRadius: 20, padding: '6px 12px', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                Начать
               </button>
             </div>
           </div>
@@ -1138,20 +1195,21 @@ export default function DriverMap() {
         {/* Направление движения */}
         {isNavTracked ? (
           <div onClick={() => navDirection && setDirSwitchConfirm(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, background: '#F0FBF4', borderRadius: 20, padding: '7px 12px', cursor: navDirection ? 'pointer' : 'default' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#1E7A38', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, background: direction === 'forward' ? '#EAF2FF' : '#F0FBF4', borderRadius: 20, padding: '7px 12px', cursor: navDirection ? 'pointer' : 'default' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={direction === 'forward' ? '#007AFF' : '#34C759'} strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+            <span style={{ fontSize: 12, fontWeight: 700, color: direction === 'forward' ? '#0058C7' : '#1E7A38', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {navDirection ?? 'Направление определяется...'}
             </span>
-            <span style={{ fontSize: 10, color: '#34C759', fontWeight: 600, flexShrink: 0 }}>авто</span>
+            <span style={{ fontSize: 10, color: direction === 'forward' ? '#007AFF' : '#34C759', fontWeight: 600, flexShrink: 0 }}>авто</span>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
             {(['forward', 'back'] as const).map(d => {
               const active = direction === d
+              const dColor = d === 'forward' ? '#007AFF' : '#34C759'
               return (
                 <button key={d} onClick={() => switchDirection(d)}
-                  style={{ flex: 1, padding: '8px 6px', borderRadius: 20, border: `1.5px solid ${active ? 'var(--orange)' : 'var(--border)'}`, background: active ? 'var(--orange)' : 'white', color: active ? 'white' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  style={{ flex: 1, padding: '8px 6px', borderRadius: 20, border: `1.5px solid ${active ? dColor : 'var(--border)'}`, background: active ? dColor : 'white', color: active ? 'white' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
                   {shortLabel(dirLabel(d))}
                 </button>
@@ -1230,11 +1288,10 @@ export default function DriverMap() {
               { label: 'Скорость:',          value: `${rivalInfo.speed} км/ч` },
               { label: 'Направление:',       value: rivalInfo.direction },
               { label: 'Текущая остановка:', value: rivalInfo.stop ?? '…' },
-              { label: 'Опережает вас на:',  value: `~${rivalInfo.minutes} мин`, color: '#34C759' },
-            ].map(({ label, value, color }) => (
+            ].map(({ label, value }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #F0F0F0' }}>
                 <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: color ?? 'var(--orange)' }}>{value}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--orange)' }}>{value}</span>
               </div>
             ))}
           </div>
@@ -1254,8 +1311,18 @@ export default function DriverMap() {
               <span style={{ fontWeight: 800, fontSize: 17 }}>Рейс закрыт: {tripClosedCard.terminalName}</span>
             </div>
             {tripClosedCard.trip.started_at && (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-                Время в пути: {Math.max(1, Math.round((new Date(tripClosedCard.trip.ended_at ?? Date.now()).getTime() - new Date(tripClosedCard.trip.started_at).getTime()) / 60000))} мин
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: tripErroneous ? 8 : 16 }}>
+                Время в пути: {Math.max(1, tripDurationMin(tripClosedCard.trip) ?? 0)} мин
+              </div>
+            )}
+
+            {tripErroneous && (
+              <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, background: '#FFF0EF', borderRadius: 10, padding: '8px 12px' }}>
+                <span style={{ fontSize: 12, color: '#CC3333', fontWeight: 600, flex: 1, lineHeight: 1.3 }}>Похоже на ошибку — не учтён в кругах</span>
+                <button onClick={markTripClosedCardValid} disabled={overridingTrip}
+                  style={{ background: 'none', border: '1.5px solid #CC3333', borderRadius: 20, padding: '5px 10px', color: '#CC3333', fontWeight: 700, fontSize: 11, cursor: overridingTrip ? 'default' : 'pointer', flexShrink: 0 }}>
+                  {overridingTrip ? '...' : 'Всё равно верный'}
+                </button>
               </div>
             )}
 
@@ -1295,11 +1362,61 @@ export default function DriverMap() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setTripCardMinimized(true)}
                 style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                🗺 Посмотреть карту
+                Посмотреть карту
               </button>
               <button onClick={manualStartNextTrip}
                 style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
                 ▶ Начать новый рейс
+              </button>
+            </div>
+
+            <button onClick={() => setForgetTripConfirm(true)}
+              style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>
+              Забыть рейс
+            </button>
+          </div>
+        </div>
+      )}
+
+      {forgetTripConfirm && tripClosedCard && (
+        <div onClick={() => setForgetTripConfirm(false)}
+          className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: 20, padding: '22px 22px', width: '100%', maxWidth: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.22)', textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Забыть этот рейс?</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 18, lineHeight: 1.4 }}>
+              Данные рейса удалятся без возможности восстановить — он больше нигде не будет учитываться.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setForgetTripConfirm(false)}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Отмена
+              </button>
+              <button onClick={doForgetTrip} disabled={forgettingTrip}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: 'none', background: '#FF3B30', color: 'white', fontWeight: 700, fontSize: 13, cursor: forgettingTrip ? 'default' : 'pointer' }}>
+                {forgettingTrip ? '...' : 'Забыть'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openTripConfirm && (
+        <div onClick={() => setOpenTripConfirm(null)}
+          className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: 20, padding: '22px 22px', width: '100%', maxWidth: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.22)', textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 18 }}>
+              Начать новый рейс{openTripConfirm.name ? ` от «${openTripConfirm.name}»` : ''}?
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setOpenTripConfirm(null)}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Отмена
+              </button>
+              <button onClick={confirmOpenTrip}
+                style={{ flex: 1, padding: '11px 10px', borderRadius: 12, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Да
               </button>
             </div>
           </div>

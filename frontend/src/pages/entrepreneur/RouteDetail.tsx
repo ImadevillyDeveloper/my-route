@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getRoutes, getVehicles, deleteRoute as apiDeleteRoute, updateRoute, getRivalsLive } from '../../api/client'
+import { getRoutes, getVehicles, deleteRoute as apiDeleteRoute, updateRoute, getDrivers, getRouteEndpoints, getNamedStops } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import BusIcon from '../../components/common/BusIcon'
-import { formatCert, capitalizeFirst } from '../../utils/format'
+import { formatCert } from '../../utils/format'
 import { useAuthStore } from '../../store/auth'
 
 const toParkName = (name: string | null): string => {
@@ -12,12 +12,6 @@ const toParkName = (name: string | null): string => {
   if (parts.length >= 3) return `ИП ${parts[0]} ${parts[1][0]}.${parts[2][0]}.`
   if (parts.length === 2) return `ИП ${parts[0]} ${parts[1][0]}.`
   return `ИП ${name}`
-}
-
-const inLineCount = (total: number, routeId: number): number => {
-  if (total === 0) return 0
-  const fracs = [1.0, 0.83, 0.67, 0.75, 0.5, 0.9, 0.6, 0.8, 0.7, 0.45]
-  return Math.max(1, Math.min(total, Math.round(total * fracs[routeId % fracs.length])))
 }
 
 const OIcon = ({ children }: { children: React.ReactNode }) => (
@@ -52,9 +46,75 @@ function EditableRow({ icon, label, value, onChange, locked, formatInput }: {
           onBlur={save} onKeyDown={e => e.key === 'Enter' && save()}
           style={{ flex: 1, textAlign: 'right', border: 'none', borderBottom: '1.5px solid var(--orange)', background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', outline: 'none', color: 'var(--orange)' }} />
       ) : (
-        <span style={{ color: 'var(--orange)', fontWeight: 600, fontSize: 14 }}>{value || '—'}</span>
+        <span style={{ color: 'var(--orange)', fontWeight: 600, fontSize: 14, textAlign: 'right', maxWidth: '58%', wordBreak: 'break-word' }}>{value || '—'}</span>
       )}
       {locked && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
+    </div>
+  )
+}
+
+// Строка с выбором конечной остановки маршрута — значение по умолчанию берётся
+// из Навитранса, но предприниматель может выбрать любую другую остановку ЭТОГО
+// маршрута из официального списка (не произвольный текст), начав вводить название.
+function StopRow({ icon, label, value, options, optionsLoading, onSelect }: {
+  icon: React.ReactNode; label: string; value: string
+  options: string[]; optionsLoading?: boolean; onSelect: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const rowRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const filtered = options.filter(o => o.toLowerCase().includes(draft.toLowerCase()))
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-stop-combo]')) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const startEdit = () => {
+    if (rowRef.current) {
+      const r = rowRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: Math.max(14, r.right - 240), width: 240 })
+    }
+    setDraft('')
+    setOpen(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  return (
+    <div ref={rowRef} data-stop-combo className="row-item" style={{ cursor: 'pointer' }} onClick={!open ? startEdit : undefined}>
+      <OIcon>{icon}</OIcon>
+      <span className="row-label">{label}</span>
+      {open ? (
+        <input ref={inputRef} value={draft} onClick={e => e.stopPropagation()}
+          onChange={e => setDraft(e.target.value)} placeholder="Начните вводить..."
+          style={{ flex: 1, textAlign: 'right', border: 'none', borderBottom: '1.5px solid var(--orange)', background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', outline: 'none', color: 'var(--orange)' }} />
+      ) : (
+        <span style={{ color: 'var(--orange)', fontWeight: 600, fontSize: 14, textAlign: 'right', maxWidth: '58%', wordBreak: 'break-word' }}>
+          {value || '—'}
+        </span>
+      )}
+      {open && (
+        <div data-stop-combo onClick={e => e.stopPropagation()}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 2000, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', maxHeight: 260, overflowY: 'auto' }}>
+          {optionsLoading ? (
+            <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--text-muted)' }}>Загрузка...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--text-muted)' }}>Ничего не найдено</div>
+          ) : filtered.map((o, i) => (
+            <div key={o} onMouseDown={() => { onSelect(o); setOpen(false) }}
+              style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 14, fontWeight: o === value ? 700 : 500, color: o === value ? 'var(--orange)' : 'var(--text-primary)', background: o === value ? '#FFF3EE' : 'white', borderBottom: i < filtered.length - 1 ? '1px solid #F5F5F5' : 'none' }}>
+              {o}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -66,36 +126,49 @@ export default function EntRouteDetail() {
   const [base, setBase] = useState<any>(null)
   const [data, setData] = useState<any>(null)
   const [totalVehicles, setTotalVehicles] = useState(0)
+  const [allDrivers, setAllDrivers] = useState<any[]>([])
+  const [stopOptions, setStopOptions] = useState<string[]>([])
+  const [stopOptionsLoading, setStopOptionsLoading] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Конечные маршрута по умолчанию берём из Навитранса (официальные названия по
+  // данным самого маршрута, не завязанные на живые машины прямо сейчас) — но
+  // предприниматель может выбрать другую остановку ЭТОГО маршрута вручную
+  // (см. StopRow), поэтому при простой перезагрузке карточки (force=false) уже
+  // выбранное значение не перетираем, только подставляем, если оно ещё пустое.
+  const refreshEndpoints = (routeId: number, routeNumber: string, force: boolean) => {
+    getRouteEndpoints(routeNumber).then(res => {
+      setData((p: any) => {
+        const patch: any = {}
+        if (res.data.start && (force || !p.start_point)) patch.start_point = res.data.start
+        if (res.data.end   && (force || !p.end_point))   patch.end_point   = res.data.end
+        if (Object.keys(patch).length === 0) return p
+        updateRoute(routeId, patch).catch(() => {})
+        return { ...p, ...patch }
+      })
+    }).catch(() => {})
+  }
+
+  const loadStopOptions = (routeNumber: string) => {
+    setStopOptionsLoading(true)
+    getNamedStops(routeNumber).then(res => setStopOptions(res.data.map((s: any) => s.name)))
+      .catch(() => setStopOptions([]))
+      .finally(() => setStopOptionsLoading(false))
+  }
+
   useEffect(() => {
-    Promise.all([getRoutes(), getVehicles()])
-      .then(([rRoutes, rVehicles]) => {
+    Promise.all([getRoutes(), getVehicles(), getDrivers()])
+      .then(([rRoutes, rVehicles, rDrivers]) => {
         const found = rRoutes.data.find((x: any) => String(x.id) === id)
         if (!found) return
         setBase(found)
         setData({ ...found })
         const count = rVehicles.data.filter((v: any) => v.route_number === found.number).length
         setTotalVehicles(count)
-        if (!found.start_point || !found.end_point) {
-          getRivalsLive([found.number]).then(res => {
-            const parts = new Set<string>()
-            res.data.forEach((v: any) => {
-              const [a, b] = (v.direction || '').split(' → ')
-              if (a?.trim()) parts.add(a.trim())
-              if (b?.trim()) parts.add(b.trim())
-            })
-            const t = [...parts]
-            if (t.length >= 2) {
-              const patch: any = {}
-              if (!found.start_point) patch.start_point = t[0]
-              if (!found.end_point)   patch.end_point   = t[1]
-              setData((p: any) => ({ ...p, ...patch }))
-              updateRoute(found.id, patch).catch(() => {})
-            }
-          }).catch(() => {})
-        }
+        setAllDrivers(rDrivers.data)
+        refreshEndpoints(found.id, found.number, false)
+        loadStopOptions(found.number)
       })
       .catch(() => {})
   }, [id])
@@ -119,25 +192,22 @@ export default function EntRouteDetail() {
     if (!base) return
     setData((p: any) => ({ ...p, number: v }))
     updateRoute(base.id, { number: v }).catch(() => {})
-    getRivalsLive([v]).then(res => {
-      const parts = new Set<string>()
-      res.data.forEach((nav: any) => {
-        const [a, b] = (nav.direction || '').split(' → ')
-        if (a?.trim()) parts.add(a.trim())
-        if (b?.trim()) parts.add(b.trim())
-      })
-      const t = [...parts]
-      if (t.length >= 2) {
-        const patch = { start_point: t[0], end_point: t[1] }
-        setData((p: any) => ({ ...p, ...patch }))
-        updateRoute(base.id, patch).catch(() => {})
-      }
-    }).catch(() => {})
+    // Номер реально изменился — старые конечные точно относятся к другому
+    // маршруту, поэтому здесь перезаписываем их безусловно (force=true).
+    refreshEndpoints(base.id, v, true)
+    loadStopOptions(v)
   }
 
   if (!data) return <LogoLoader fullPage />
 
-  const inLine = inLineCount(totalVehicles, base?.id ?? 1)
+  // "В линии" — реальное число машин маршрута, на которых прямо сейчас открыта
+  // смена (а не какая-то формула-заглушка).
+  const inLine = new Set(
+    allDrivers
+      .filter(d => d.route_number === data.number && d.active_shift_start)
+      .map(d => d.active_shift_vehicle_plate || d.plate_number)
+      .filter(Boolean)
+  ).size
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _storageKey = `route_extra_${id}` // kept for legacy compat, not used
 
@@ -166,20 +236,22 @@ export default function EntRouteDetail() {
         {/* Editable fields */}
         <div className="card">
           <EditableRow
-            icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
+            icon={<svg viewBox="0 0 24 24"><text x="12" y="17" textAnchor="middle" fontSize="15" fontWeight="800" fill="var(--orange)" stroke="none">№</text></svg>}
             label="Номер маршрута" value={data.number} onChange={setNumber}
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>}
             label="Свидетельство" value={data.document_number ?? ''} onChange={set('document_number')} formatInput={formatCert}
           />
-          <EditableRow
+          <StopRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/></svg>}
-            label="Начальная точка" value={data.start_point ?? ''} onChange={v => set('start_point')(capitalizeFirst(v))}
+            label="Начальная точка" value={data.start_point ?? ''}
+            options={stopOptions} optionsLoading={stopOptionsLoading} onSelect={set('start_point')}
           />
-          <EditableRow
+          <StopRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>}
-            label="Конечная точка" value={data.end_point ?? ''} onChange={v => set('end_point')(capitalizeFirst(v))}
+            label="Конечная точка" value={data.end_point ?? ''}
+            options={stopOptions} optionsLoading={stopOptionsLoading} onSelect={set('end_point')}
           />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>}

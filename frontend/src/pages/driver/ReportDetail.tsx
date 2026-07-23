@@ -3,60 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getReport, getTrips, type Trip } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import BusIcon from '../../components/common/BusIcon'
+import TripsModal from '../../components/common/TripsModal'
 import type { Report } from '../../types'
 
 const OIcon = ({ children }: { children: React.ReactNode }) => (
   <div className="row-icon" style={{ background: '#FFF3EE', borderRadius: 8 }}>{children}</div>
 )
-
-const fmtTime = (iso: string) => {
-  const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
-}
-
-function TripsModal({ reportId, onClose }: { reportId: number; onClose: () => void }) {
-  const [trips, setTrips] = useState<Trip[] | null>(null)
-
-  useEffect(() => {
-    getTrips({ report_id: reportId }).then(r => setTrips(r.data)).catch(() => setTrips([]))
-  }, [reportId])
-
-  return (
-    <div onClick={onClose}
-      className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div onClick={e => e.stopPropagation()}
-        style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 380, maxHeight: 'calc(var(--app-vh, 100vh) * 0.75)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '20px 22px 0', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontWeight: 800, fontSize: 17 }}>Рейсы за смену</span>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
-          </div>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 22px 20px' }}>
-          {trips === null ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
-          ) : trips.length === 0 ? (
-            <div style={{ fontSize: 14, color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>Нет данных о рейсах</div>
-          ) : (
-            trips.map((t, i) => {
-              const durationMin = t.ended_at ? Math.round((new Date(t.ended_at).getTime() - new Date(t.started_at).getTime()) / 60000) : null
-              return (
-                <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F5F5F5' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{i + 1}. {t.start_terminal} → {t.end_terminal ?? '…'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {fmtTime(t.started_at)}–{t.ended_at ? fmtTime(t.ended_at) : '…'}{durationMin != null ? ` (${durationMin} мин)` : ''}
-                    </div>
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   pending:  { label: 'на проверке',   color: 'var(--text-muted)' },
@@ -69,11 +21,19 @@ export default function DriverReportDetail() {
   const { id } = useParams()
   const [report, setReport] = useState<Report | null>(null)
   const [showTrips, setShowTrips] = useState(false)
+  const [trips, setTrips] = useState<Trip[] | null>(null)
+  const [tripsLoading, setTripsLoading] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
     if (id) getReport(Number(id)).then(r => setReport(r.data)).catch(() => {})
   }, [id])
+
+  useEffect(() => {
+    if (!report) return
+    setTripsLoading(true)
+    getTrips({ report_id: report.id }).then(r => setTrips(r.data)).catch(() => setTrips([])).finally(() => setTripsLoading(false))
+  }, [report?.id])
 
   if (!report) return <LogoLoader fullPage />
 
@@ -207,7 +167,9 @@ export default function DriverReportDetail() {
         </div>
       </div>
 
-      {showTrips && <TripsModal reportId={report.id} onClose={() => setShowTrips(false)} />}
+      {showTrips && (
+        <TripsModal trips={trips} loading={tripsLoading} onClose={() => setShowTrips(false)} onTripsChange={setTrips} />
+      )}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getVehicle, getVehicleInsurance, getVehicleMaintenance, updateInsurance, updateMaintenance, getDrivers, getRoutes, updateDriver, deleteVehicle as apiDeleteVehicle, uploadVehiclePhoto, updateVehicle as apiUpdateVehicle, resolveAssetUrl } from '../../api/client'
 import LogoLoader from '../../components/common/LogoLoader'
 import BusIcon from '../../components/common/BusIcon'
+import DateRow from '../../components/common/DateRow'
 import { useAuthStore } from '../../store/auth'
 import { formatPlate } from '../../utils/format'
 
@@ -80,24 +81,6 @@ function InlinePlate({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-// ── Date helpers ─────────────────────────────────────────────────
-// "2026-08-22" → "до 22.08.26"
-const isoToDisplay = (iso: string | null | undefined): string => {
-  if (!iso) return ''
-  const [y, m, d] = iso.split('-')
-  if (!y || !m || !d) return ''
-  return `до ${d}.${m}.${y.slice(2)}`
-}
-
-// "до 22.08.26" → "2026-08-22" (for API)
-const displayToIso = (raw: string): string | null => {
-  const m = raw.match(/(\d{1,2})\.(\d{2})\.(\d{2,4})/)
-  if (!m) return null
-  const [, d, mo, y] = m
-  const year = y.length === 2 ? '20' + y : y
-  return `${year}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
-}
-
 // ── Defaults ──────────────────────────────────────────────────────
 const VEHICLE_DEFAULTS = {
   driverIds: [] as string[],
@@ -157,9 +140,9 @@ export default function EntVehicleDetail() {
       const maint = maintRes.data
       setData(prev => ({
         ...prev,
-        kasko: ins?.kasko_end_date ? isoToDisplay(ins.kasko_end_date) : prev.kasko,
-        osago: ins?.end_date       ? isoToDisplay(ins.end_date)       : prev.osago,
-        to:    maint?.next_date    ? isoToDisplay(maint.next_date)    : prev.to,
+        kasko: ins?.kasko_end_date ?? prev.kasko,
+        osago: ins?.end_date       ?? prev.osago,
+        to:    maint?.next_date    ?? prev.to,
       }))
     })
   }, [id])
@@ -209,20 +192,13 @@ export default function EntVehicleDetail() {
 
   const saveData = (next: typeof VEHICLE_DEFAULTS) => setData(next)
 
-  const set = (k: keyof Omit<typeof VEHICLE_DEFAULTS, 'driverIds'>) => (val: string) => {
-    saveData({ ...data, [k]: val })
+  const setDate = (k: 'kasko' | 'osago' | 'to') => (iso: string) => {
+    saveData({ ...data, [k]: iso })
     if (!id) return
     // Синхронизируем в БД
-    if (k === 'kasko') {
-      const iso = displayToIso(val)
-      if (iso) updateInsurance(Number(id), { kasko_end_date: iso }).catch(() => {})
-    } else if (k === 'osago') {
-      const iso = displayToIso(val)
-      if (iso) updateInsurance(Number(id), { end_date: iso }).catch(() => {})
-    } else if (k === 'to') {
-      const iso = displayToIso(val)
-      if (iso) updateMaintenance(Number(id), { next_date: iso }).catch(() => {})
-    }
+    if (k === 'kasko') updateInsurance(Number(id), { kasko_end_date: iso }).catch(() => {})
+    else if (k === 'osago') updateInsurance(Number(id), { end_date: iso }).catch(() => {})
+    else if (k === 'to') updateMaintenance(Number(id), { next_date: iso }).catch(() => {})
   }
 
   const deleteVehicle = async () => {
@@ -302,7 +278,7 @@ export default function EntVehicleDetail() {
                 setRouteDropOpen(o => !o)
               }}>
               <OIcon>
-                <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 17l2-7h14l2 7"/><path d="M5 17H2"/><path d="M19 17h3"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
               </OIcon>
               <span className="row-label">Маршрут</span>
               <span style={{ color: route ? 'var(--orange)' : 'var(--text-muted)', fontWeight: route ? 600 : 400, fontSize: 14, marginRight: 4 }}>
@@ -315,7 +291,7 @@ export default function EntVehicleDetail() {
           </div>
 
           <div data-drivers-drop>
-            <div ref={rowRef} className="row-item" style={{ cursor: 'pointer', flexWrap: 'wrap', gap: 4 }}
+            <div ref={rowRef} className="row-item" style={{ cursor: 'pointer' }}
               onClick={() => {
                 if (!dropOpen && rowRef.current) {
                   const r = rowRef.current.getBoundingClientRect()
@@ -327,7 +303,7 @@ export default function EntVehicleDetail() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               </OIcon>
               <span className="row-label">Водители</span>
-              <span style={{ color: 'var(--orange)', fontWeight: 600, fontSize: 13, flex: 1, textAlign: 'right', marginRight: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{driverNames}</span>
+              <span style={{ color: 'var(--orange)', fontWeight: 600, fontSize: 13, textAlign: 'right', marginRight: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{driverNames}</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
                 <polyline points={dropOpen ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/>
               </svg>
@@ -342,17 +318,17 @@ export default function EntVehicleDetail() {
 
         {/* КАСКО / ОСАГО / Техосмотр */}
         <div className="card">
-          <EditableRow
-            icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
-            label="КАСКО" value={data.kasko} onChange={set('kasko')}
+          <DateRow
+            icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><text x="12" y="15.5" textAnchor="middle" fontSize="9" fontWeight="800" fill="var(--orange)" stroke="none">К</text></svg>}
+            label="КАСКО" value={data.kasko} onChange={setDate('kasko')}
           />
-          <EditableRow
-            icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>}
-            label="ОСАГО" value={data.osago} onChange={set('osago')}
+          <DateRow
+            icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><text x="12" y="15.5" textAnchor="middle" fontSize="9" fontWeight="800" fill="var(--orange)" stroke="none">О</text></svg>}
+            label="ОСАГО" value={data.osago} onChange={setDate('osago')}
           />
-          <EditableRow
+          <DateRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}
-            label="Техосмотр" value={data.to} onChange={set('to')}
+            label="Техосмотр" value={data.to} onChange={setDate('to')}
           />
         </div>
 

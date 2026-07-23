@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth'
 
 import Login from './pages/Login'
+import PasswordConfirm from './pages/PasswordConfirm'
+import PasswordReset from './pages/PasswordReset'
 import DriverLayout from './components/driver/Layout'
 import EntrepreneurLayout from './components/entrepreneur/Layout'
 
@@ -61,6 +63,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/login/password" element={<PasswordConfirm />} />
+        <Route path="/login/reset" element={<PasswordReset />} />
         <Route path="/admin" element={<AdminPanel />} />
 
         <Route path="/driver" element={<ProtectedDriver><DriverLayout /></ProtectedDriver>}>

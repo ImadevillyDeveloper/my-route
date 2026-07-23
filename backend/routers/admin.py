@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
-from ..auth import get_current_admin
+from ..auth import get_current_admin, pwd_context
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -48,7 +48,10 @@ def create_entrepreneur(
         raise HTTPException(400, "Укажите имя ИП")
     if not phone:
         raise HTTPException(400, "Укажите номер телефона")
-    user = models.User(full_name=full_name, phone=phone, role=models.UserRole.entrepreneur)
+    user = models.User(
+        full_name=full_name, phone=phone, role=models.UserRole.entrepreneur,
+        hashed_password=pwd_context.hash(body.password),
+    )
     db.add(user)
     try:
         db.commit()
@@ -72,6 +75,24 @@ def set_entrepreneur_partner(
     if not user:
         raise HTTPException(404, "ИП не найден")
     user.is_partner = body.is_partner
+    db.commit()
+    db.refresh(user)
+    return _entrepreneur_out(user, db)
+
+
+@router.put("/entrepreneurs/{entrepreneur_id}/password", response_model=schemas.EntrepreneurAdminOut)
+def set_entrepreneur_password(
+    entrepreneur_id: int,
+    body: schemas.EntrepreneurPasswordUpdate,
+    current_admin: models.User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(models.User).filter(
+        models.User.id == entrepreneur_id, models.User.role == models.UserRole.entrepreneur
+    ).first()
+    if not user:
+        raise HTTPException(404, "ИП не найден")
+    user.hashed_password = pwd_context.hash(body.password)
     db.commit()
     db.refresh(user)
     return _entrepreneur_out(user, db)

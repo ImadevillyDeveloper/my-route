@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { getVehicles, getRoutes, createVehicle, updateInsurance, updateMaintenance, getDrivers, updateDriver, uploadVehiclePhoto } from '../../api/client'
 import { formatPlate } from '../../utils/format'
 import BusIcon from '../../components/common/BusIcon'
+import DateRow from '../../components/common/DateRow'
 
 const abbr = (n: string) => {
   const p = n.trim().split(/\s+/)
@@ -386,26 +387,13 @@ export default function EntVehicleAdd() {
         {/* КАСКО / ОСАГО / Техосмотр */}
         <div className="card">
           {([
-            { label: 'КАСКО',      key: 'kasko', icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> },
-            { label: 'ОСАГО',      key: 'osago', icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg> },
+            { label: 'КАСКО',      key: 'kasko', icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><text x="12" y="15.5" textAnchor="middle" fontSize="9" fontWeight="800" fill="var(--orange)" stroke="none">К</text></svg> },
+            { label: 'ОСАГО',      key: 'osago', icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><text x="12" y="15.5" textAnchor="middle" fontSize="9" fontWeight="800" fill="var(--orange)" stroke="none">О</text></svg> },
             { label: 'Техосмотр',  key: 'to',    icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
-          ] as { label: string; key: 'kasko'|'osago'|'to'; icon: React.ReactNode }[]).map(({ label, key, icon }) => {
-            const val: string = (form as any)[key]
-            const display = val ? `до ${val.split('-').reverse().map((p, i) => i === 2 ? p.slice(2) : p).join('.')}` : 'Выберите'
-            return (
-              <div key={label} className="row-item">
-                <OIcon>{icon}</OIcon>
-                <span className="row-label">{label}</span>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 13, color: val ? 'var(--orange)' : 'var(--text-muted)', fontWeight: val ? 600 : 400 }}>{display}</span>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  <input type="date" value={val}
-                    onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
-                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
-                </div>
-              </div>
-            )
-          })}
+          ] as { label: string; key: 'kasko'|'osago'|'to'; icon: React.ReactNode }[]).map(({ label, key, icon }) => (
+            <DateRow key={label} icon={icon} label={label} value={(form as any)[key]}
+              onChange={v => setForm(p => ({ ...p, [key]: v }))} />
+          ))}
         </div>
 
         {submitError && (

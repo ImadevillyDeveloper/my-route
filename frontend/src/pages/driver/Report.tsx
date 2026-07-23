@@ -4,6 +4,8 @@ import { scanReceipt, createReport, getMe, updateMe, getTrips, type Trip } from 
 import LogoLoader from '../../components/common/LogoLoader'
 import BusIcon from '../../components/common/BusIcon'
 import PickerRow from '../../components/common/PickerRow'
+import TripsModal from '../../components/common/TripsModal'
+import { isTripErroneous } from '../../utils/trips'
 
 interface Form {
   shift_number: string
@@ -52,50 +54,6 @@ const fmtTime = (iso: string) => {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
-function TripsModal({ shiftStartRef, onClose }: { shiftStartRef: string; onClose: () => void }) {
-  const [trips, setTrips] = useState<Trip[] | null>(null)
-
-  useEffect(() => {
-    getTrips({ shift_start_ref: shiftStartRef }).then(r => setTrips(r.data)).catch(() => setTrips([]))
-  }, [shiftStartRef])
-
-  return (
-    <div onClick={onClose}
-      className="map-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div onClick={e => e.stopPropagation()}
-        style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 380, maxHeight: 'calc(var(--app-vh, 100vh) * 0.75)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '20px 22px 0', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontWeight: 800, fontSize: 17 }}>Рейсы за смену</span>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
-          </div>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 22px 20px' }}>
-          {trips === null ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><LogoLoader size={36} /></div>
-          ) : trips.length === 0 ? (
-            <div style={{ fontSize: 14, color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>Нет данных о рейсах</div>
-          ) : (
-            trips.map((t, i) => {
-              const durationMin = t.ended_at ? Math.round((new Date(t.ended_at).getTime() - new Date(t.started_at).getTime()) / 60000) : null
-              return (
-                <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F5F5F5' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{i + 1}. {t.start_terminal} → {t.end_terminal ?? '…'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {fmtTime(t.started_at)}–{t.ended_at ? fmtTime(t.ended_at) : '…'}{durationMin != null ? ` (${durationMin} мин)` : ''}
-                    </div>
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function DriverReport() {
   const [scanned, setScanned] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -107,6 +65,8 @@ export default function DriverReport() {
   const [shiftStartRef, setShiftStartRef] = useState('')
   const [shiftEndTime, setShiftEndTime] = useState(() => fmtTime(new Date().toISOString()))
   const [showTrips, setShowTrips] = useState(false)
+  const [shiftTrips, setShiftTrips] = useState<Trip[] | null>(null)
+  const [tripsLoading, setTripsLoading] = useState(false)
   const [shiftActive, setShiftActive] = useState<boolean | null>(null)  // null = ещё не проверили
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -134,10 +94,15 @@ export default function DriverReport() {
         setShiftStartRef(r.data.active_shift_start)
         // Кол-во кругов предзаполняем по факту зафиксированных рейсов (кругов = рейсов / 2),
         // БЕЗ округления — нечётное число рейсов даёт например 5.5 круга. Поле
-        // остаётся редактируемым — водитель может поправить перед отправкой.
+        // остаётся редактируемым — водитель может поправить перед отправкой. Рейсы
+        // со слишком короткой/длинной длительностью (похоже на сбой GPS) в подсчёт
+        // не идут, пока водитель сам не подтвердит их верными.
+        setTripsLoading(true)
         getTrips({ shift_start_ref: r.data.active_shift_start }).then(tr => {
-          if (tr.data.length > 0) set('circles_count', String(tr.data.length / 2))
-        }).catch(() => {})
+          setShiftTrips(tr.data)
+          const valid = tr.data.filter(t => !isTripErroneous(t))
+          if (valid.length > 0) set('circles_count', String(valid.length / 2))
+        }).catch(() => {}).finally(() => setTripsLoading(false))
       }
     }).catch(() => setShiftActive(false))
   }, [])
@@ -389,7 +354,14 @@ export default function DriverReport() {
         </Modal>
       )}
 
-      {showTrips && shiftStartRef && <TripsModal shiftStartRef={shiftStartRef} onClose={() => setShowTrips(false)} />}
+      {showTrips && shiftStartRef && (
+        <TripsModal trips={shiftTrips} loading={tripsLoading} onClose={() => setShowTrips(false)}
+          onTripsChange={updated => {
+            setShiftTrips(updated)
+            const valid = updated.filter(t => !isTripErroneous(t))
+            set('circles_count', String(valid.length > 0 ? valid.length / 2 : 0))
+          }} />
+      )}
     </div>
   )
 }

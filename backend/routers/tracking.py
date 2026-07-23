@@ -833,6 +833,26 @@ def get_route_terminals(
     )
 
 
+@router.get("/route-endpoints", response_model=schemas.RouteEndpointsOut)
+def get_route_endpoints(
+    route_number: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Официальные названия конечных маршрута по данным Навитранса (rl_laststation
+    обоих направлений) — источник для автозаполнения Route.start_point/end_point.
+    В отличие от /route-terminals, не требует, чтобы эти поля уже были заполнены
+    и не зависит от наличия сейчас живых машин на маршруте."""
+    mr_id = _find_mr_id(route_number, db)
+    if not mr_id:
+        return schemas.RouteEndpointsOut(start=None, end=None)
+    stops_data = _fetch_route_stops(mr_id, route_number, db)
+    return schemas.RouteEndpointsOut(
+        start=stops_data.get("A_dest") or None,
+        end=stops_data.get("B_dest") or None,
+    )
+
+
 @router.get("/named-stops", response_model=list[schemas.NamedStopOut])
 def get_named_stops_route(
     route_number: str = Query(...),
@@ -922,6 +942,44 @@ def close_trip(
         db.commit()
         db.refresh(trip)
     return trip
+
+
+@router.post("/trips/{trip_id}/override", response_model=schemas.TripOut)
+def override_trip(
+    trip_id: int,
+    body: schemas.TripOverride,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Водитель вручную помечает рейс с аномальной длительностью как корректный (или снимает пометку)."""
+    trip = db.query(models.Trip).filter(
+        models.Trip.id == trip_id, models.Trip.driver_id == current_user.id
+    ).first()
+    if not trip:
+        raise HTTPException(404, "Рейс не найден")
+    trip.override_valid = body.valid
+    db.commit()
+    db.refresh(trip)
+    return trip
+
+
+@router.delete("/trips/{trip_id}")
+def forget_trip(
+    trip_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Полностью удаляет ошибочно созданный рейс — он больше нигде не учитывается."""
+    trip = db.query(models.Trip).filter(
+        models.Trip.id == trip_id, models.Trip.driver_id == current_user.id
+    ).first()
+    if not trip:
+        raise HTTPException(404, "Рейс не найден")
+    if current_user.active_trip_id == trip.id:
+        current_user.active_trip_id = None
+    db.delete(trip)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/trips", response_model=list[schemas.TripOut])

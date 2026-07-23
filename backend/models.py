@@ -61,6 +61,10 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role = Column(Enum(UserRole), nullable=False)
     hashed_password = Column(String, nullable=True)
+    # Одноразовый код восстановления пароля — выдаётся ботом @MyRouteSupport_bot
+    # после подтверждения личности через "Поделиться номером" в Telegram.
+    reset_code = Column(String, nullable=True)
+    reset_code_expires_at = Column(UTCDateTime, nullable=True)
     avatar_url = Column(String, nullable=True)
     vehicle_plate = Column(String, nullable=True)   # назначенное ТС (много водителей → одно ТС)
     route_number  = Column(String, nullable=True)   # назначенный маршрут (прямое поле)
@@ -246,6 +250,9 @@ class Trip(Base):
     started_at = Column(UTCDateTime, nullable=False)
     ended_at   = Column(UTCDateTime, nullable=True)
     close_method = Column(String, nullable=True)  # "gps" | "manual"
+    # Водитель подтвердил, что рейс с аномальной длительностью (слишком короткий
+    # или слишком длинный) на самом деле правильный — не считаем его ошибочным.
+    override_valid = Column(Boolean, default=False)
 
     created_at = Column(UTCDateTime, server_default=func.now())
 

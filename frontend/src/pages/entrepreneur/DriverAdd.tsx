@@ -93,7 +93,7 @@ export default function EntDriverAdd() {
   const navigate = useNavigate()
   const location = useLocation()
   const presetRoute: string = (location.state as any)?.presetRoute ?? ''
-  const [form, setForm] = useState({ last: '', first: '', mid: '', vu: '', plate: '', route: presetRoute, phone: '' })
+  const [form, setForm] = useState({ last: '', first: '', mid: '', vu: '', plate: '', route: presetRoute, phone: '', password: '' })
   const [showSuccess, setShowSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -134,6 +134,7 @@ export default function EntDriverAdd() {
   const submit = async () => {
     if (!form.last.trim()) { setError('Введите фамилию водителя'); return }
     if (!form.vu.trim()) { setError('Введите номер водительского удостоверения'); return }
+    if (form.password.trim().length < 4) { setError('Пароль для входа — минимум 4 символа'); return }
     setLoading(true)
     setError('')
     try {
@@ -141,6 +142,7 @@ export default function EntDriverAdd() {
       const res = await createDriver({
         full_name: fullName,
         driver_id: form.vu.trim(),
+        password: form.password.trim(),
         phone: form.phone.trim() || undefined,
         plate_number: form.plate || undefined,
         route_number: form.route || undefined,
@@ -214,6 +216,13 @@ export default function EntDriverAdd() {
             </OIcon>
             <span className="row-label">Телефон</span>
             <input className="row-input" placeholder="+7 (xxx) xxx-xx-xx" value={form.phone} onChange={sPhone} />
+          </div>
+          <div className="row-item">
+            <OIcon>
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </OIcon>
+            <span className="row-label">Пароль для входа *</span>
+            <input className="row-input" placeholder="Придумайте пароль" value={form.password} onChange={s('password')} />
           </div>
         </div>
 

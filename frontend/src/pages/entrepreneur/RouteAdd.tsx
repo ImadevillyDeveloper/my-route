@@ -1,18 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createRoute, getRivalsLive } from '../../api/client'
-import { capitalizeFirst, formatCert } from '../../utils/format'
-
-function extractTerminals(vehicles: any[]): [string, string] | null {
-  const parts = new Set<string>()
-  vehicles.forEach(v => {
-    const [a, b] = (v.direction || '').split(' → ')
-    if (a?.trim()) parts.add(a.trim())
-    if (b?.trim()) parts.add(b.trim())
-  })
-  const t = [...parts]
-  return t.length >= 2 ? [t[0], t[1]] : null
-}
+import { createRoute, getRouteEndpoints } from '../../api/client'
+import { formatCert } from '../../utils/format'
 
 const CheckCircle = () => (
   <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2.5px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -29,25 +18,19 @@ export default function EntRouteAdd() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const s = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }))
-  const sEnd = (k: 'end1'|'end2') => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: capitalizeFirst(e.target.value) }))
   const sCert = (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, cert: formatCert(e.target.value) }))
 
+  // Конечные — только из Навитранса (официальные названия по данным самого
+  // маршрута), предприниматель их вручную не вводит.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     const num = form.number.trim()
-    if (!num) return
+    if (!num) { setForm(p => ({ ...p, end1: '', end2: '' })); return }
     debounceRef.current = setTimeout(async () => {
       setLookingUp(true)
       try {
-        const res = await getRivalsLive([num])
-        const terminals = extractTerminals(res.data)
-        if (terminals) {
-          setForm(p => ({
-            ...p,
-            end1: p.end1 || terminals[0],
-            end2: p.end2 || terminals[1],
-          }))
-        }
+        const res = await getRouteEndpoints(num)
+        setForm(p => ({ ...p, end1: res.data.start ?? '', end2: res.data.end ?? '' }))
       } catch {}
       finally { setLookingUp(false) }
     }, 600)
@@ -79,10 +62,12 @@ export default function EntRouteAdd() {
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Данные маршрута *</div>
               <input className="form-input" placeholder="Номер" value={form.number} onChange={s('number')} style={{ padding: '8px 12px', fontSize: 14 }} />
               <div style={{ position: 'relative' }}>
-                <input className="form-input" placeholder="Конечная 1" value={form.end1} onChange={sEnd('end1')} style={{ padding: '8px 12px', fontSize: 14, paddingRight: lookingUp ? 32 : undefined }} />
+                <input className="form-input" placeholder="Конечная 1 — определяется по номеру" value={form.end1} disabled
+                  style={{ padding: '8px 12px', fontSize: 14, paddingRight: lookingUp ? 32 : undefined, color: 'var(--text-muted)', background: '#F7F7F7' }} />
                 {lookingUp && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)' }}>…</span>}
               </div>
-              <input className="form-input" placeholder="Конечная 2" value={form.end2} onChange={sEnd('end2')} style={{ padding: '8px 12px', fontSize: 14 }} />
+              <input className="form-input" placeholder="Конечная 2 — определяется по номеру" value={form.end2} disabled
+                style={{ padding: '8px 12px', fontSize: 14, color: 'var(--text-muted)', background: '#F7F7F7' }} />
             </div>
           </div>
         </div>

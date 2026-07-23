@@ -41,14 +41,17 @@ api.interceptors.response.use(
 export default api;
 
 // Auth
-export const loginDriver = (driver_id: string) =>
-  api.post('/auth/login/driver', { driver_id });
+export const loginDriver = (driver_id: string, password: string) =>
+  api.post('/auth/login/driver', { driver_id, password });
 
-export const loginEntrepreneur = (phone: string) =>
-  api.post('/auth/login/entrepreneur', { phone });
+export const loginEntrepreneur = (phone: string, password: string) =>
+  api.post('/auth/login/entrepreneur', { phone, password });
 
 export const loginAdmin = (password: string) =>
   api.post('/auth/login/admin', { password });
+
+export const confirmPasswordReset = (role: 'driver' | 'entrepreneur', identifier: string, code: string, new_password: string) =>
+  api.post('/auth/password-reset/confirm', { role, identifier, code, new_password });
 
 // Admin
 export interface AdminEntrepreneur {
@@ -62,8 +65,10 @@ export interface AdminEntrepreneur {
   is_partner: boolean
 }
 export const getAdminEntrepreneurs = () => api.get<AdminEntrepreneur[]>('/admin/entrepreneurs')
-export const createAdminEntrepreneur = (full_name: string, phone: string) =>
-  api.post<AdminEntrepreneur>('/admin/entrepreneurs', { full_name, phone })
+export const createAdminEntrepreneur = (full_name: string, phone: string, password: string) =>
+  api.post<AdminEntrepreneur>('/admin/entrepreneurs', { full_name, phone, password })
+export const setAdminEntrepreneurPassword = (id: number, password: string) =>
+  api.put<AdminEntrepreneur>(`/admin/entrepreneurs/${id}/password`, { password })
 export const deleteAdminEntrepreneur = (id: number) =>
   api.delete(`/admin/entrepreneurs/${id}`)
 export const setAdminEntrepreneurPartner = (id: number, is_partner: boolean) =>
@@ -115,9 +120,12 @@ export interface Trip {
   started_at: string
   ended_at: string | null
   close_method: 'gps' | 'manual' | null
+  override_valid: boolean
 }
 export const getRouteTerminalCoords = (routeNumber: string) =>
   api.get<TerminalCoords>('/tracking/route-terminals', { params: { route_number: routeNumber } })
+export const getRouteEndpoints = (routeNumber: string) =>
+  api.get<{ start: string | null; end: string | null }>('/tracking/route-endpoints', { params: { route_number: routeNumber } })
 export const getNamedStops = (routeNumber: string) =>
   api.get<NamedStop[]>('/tracking/named-stops', { params: { route_number: routeNumber } })
 export const getStopSchedule = (stopName: string, lat: number, lng: number, stId?: string | null) =>
@@ -128,6 +136,10 @@ export const closeTrip = (tripId: number, endTerminal: string, closeMethod: 'gps
   api.post<Trip>(`/tracking/trips/${tripId}/close`, { end_terminal: endTerminal, close_method: closeMethod })
 export const getTrips = (params: { report_id?: number; shift_start_ref?: string }) =>
   api.get<Trip[]>('/tracking/trips', { params })
+export const overrideTrip = (tripId: number, valid: boolean) =>
+  api.post<Trip>(`/tracking/trips/${tripId}/override`, { valid })
+export const forgetTrip = (tripId: number) =>
+  api.delete(`/tracking/trips/${tripId}`)
 
 // Chat
 export const getChatConversations = () => api.get('/chat/conversations')

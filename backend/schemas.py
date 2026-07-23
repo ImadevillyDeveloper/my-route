@@ -31,6 +31,7 @@ class SalaryStatus(str, Enum):
 class DriverCreate(BaseModel):
     full_name: str
     driver_id: str          # номер ВУ — используется для входа
+    password: str           # пароль для входа задаёт предприниматель при добавлении водителя
     phone: Optional[str] = None
     plate_number: Optional[str] = None
     route_number: Optional[str] = None
@@ -40,6 +41,7 @@ class DriverUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     driver_id: Optional[str] = None
+    password: Optional[str] = None      # задан — сменить пароль водителя
     plate_number: Optional[str] = None  # "" — снять ТС, иначе назначить
     route_number: Optional[str] = None  # "" — снять маршрут, иначе назначить
 
@@ -56,6 +58,9 @@ class DriverOut(BaseModel):
     route_number: Optional[str] = None
     plate_number: Optional[str] = None
     avatar_url: Optional[str] = None
+    active_shift_start: Optional[str] = None
+    active_shift_vehicle_plate: Optional[str] = None
+    has_password: bool = False
 
     class Config:
         from_attributes = True
@@ -64,14 +69,23 @@ class DriverOut(BaseModel):
 # Auth
 class DriverLoginRequest(BaseModel):
     driver_id: str
+    password: str
 
 
 class EntrepreneurLoginRequest(BaseModel):
     phone: str
+    password: str
 
 
 class AdminLoginRequest(BaseModel):
     password: str
+
+
+class PasswordResetConfirm(BaseModel):
+    role: str  # "driver" | "entrepreneur"
+    identifier: str  # номер ВУ (водитель) или телефон (ИП)
+    code: str
+    new_password: str
 
 
 class TokenResponse(BaseModel):
@@ -135,10 +149,15 @@ class EntrepreneurAdminOut(BaseModel):
 class EntrepreneurAdminCreate(BaseModel):
     full_name: str
     phone: str
+    password: str  # пароль для входа задаёт админ при создании ИП
 
 
 class EntrepreneurPartnerUpdate(BaseModel):
     is_partner: bool
+
+
+class EntrepreneurPasswordUpdate(BaseModel):
+    password: str
 
 
 # Tracking
@@ -195,6 +214,7 @@ class TripOut(BaseModel):
     started_at: datetime
     ended_at: Optional[datetime] = None
     close_method: Optional[str] = None
+    override_valid: bool = False
 
     class Config:
         from_attributes = True
@@ -212,6 +232,10 @@ class TripClose(BaseModel):
     close_method: str = "gps"  # "gps" | "manual"
 
 
+class TripOverride(BaseModel):
+    valid: bool
+
+
 class NamedStopOut(BaseModel):
     name: str
     lat: float
@@ -222,6 +246,11 @@ class NamedStopOut(BaseModel):
 class TerminalCoordsOut(BaseModel):
     start: Optional[NamedStopOut] = None
     end: Optional[NamedStopOut] = None
+
+
+class RouteEndpointsOut(BaseModel):
+    start: Optional[str] = None
+    end: Optional[str] = None
 
 
 class StopDeparture(BaseModel):

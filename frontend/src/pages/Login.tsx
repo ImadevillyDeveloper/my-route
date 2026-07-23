@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loginDriver, loginEntrepreneur } from '../api/client'
-import { useAuthStore } from '../store/auth'
 import { formatVU } from '../utils/format'
 
 function BusLogo() {
@@ -24,25 +22,15 @@ function BusLogo() {
 export default function Login() {
   const [driverVU, setDriverVU] = useState('')
   const [phone, setPhone] = useState('+7')
-  const [loadingDriver, setLoadingDriver] = useState(false)
-  const [loadingEnt, setLoadingEnt] = useState(false)
   const [errorDriver, setErrorDriver] = useState('')
   const [errorEnt, setErrorEnt] = useState('')
   const navigate = useNavigate()
-  const setAuth = useAuthStore((s) => s.setAuth)
 
-  const handleDriver = async () => {
+  const handleDriver = () => {
     const digits = driverVU.replace(/\D/g, '')
     if (!digits) { setErrorDriver('Введите номер ВУ'); return }
     if (digits.length < 10) { setErrorDriver('Номер ВУ: 10 цифр — например, 00 00 123456'); return }
-    setLoadingDriver(true); setErrorDriver('')
-    try {
-      const res = await loginDriver(driverVU.trim())
-      const { access_token, role, user_id, full_name } = res.data
-      setAuth(access_token, role, user_id, full_name)
-      navigate('/driver/map', { replace: true })
-    } catch { setErrorDriver('Неверный номер ВУ') }
-    finally { setLoadingDriver(false) }
+    navigate('/login/password', { state: { role: 'driver', identifier: driverVU.trim() } })
   }
 
   const formatPhone = (val: string) => {
@@ -57,17 +45,10 @@ export default function Login() {
     return f
   }
 
-  const handleEnt = async () => {
+  const handleEnt = () => {
     const digits = phone.replace(/\D/g, '')
     if (digits.length < 11) { setErrorEnt('Введите полный номер телефона'); return }
-    setLoadingEnt(true); setErrorEnt('')
-    try {
-      const res = await loginEntrepreneur('+' + digits)
-      const { access_token, role, user_id, full_name } = res.data
-      setAuth(access_token, role, user_id, full_name)
-      navigate('/entrepreneur/dashboard', { replace: true })
-    } catch { setErrorEnt('Ошибка входа') }
-    finally { setLoadingEnt(false) }
+    navigate('/login/password', { state: { role: 'entrepreneur', identifier: '+' + digits } })
   }
 
   return (
@@ -120,8 +101,8 @@ export default function Login() {
           {errorDriver && (
             <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8, paddingLeft: 4 }}>{errorDriver}</div>
           )}
-          <button className="btn btn-primary" onClick={handleDriver} disabled={loadingDriver} style={{ borderRadius: 12, marginBottom: 8 }}>
-            {loadingDriver ? 'Вход...' : 'Войти'}
+          <button className="btn btn-primary" onClick={handleDriver} style={{ borderRadius: 12, marginBottom: 8 }}>
+            Войти
           </button>
         </div>
 
@@ -153,8 +134,8 @@ export default function Login() {
           {errorEnt && (
             <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8, paddingLeft: 4 }}>{errorEnt}</div>
           )}
-          <button className="btn btn-primary" onClick={handleEnt} disabled={loadingEnt} style={{ borderRadius: 12, marginBottom: 10 }}>
-            {loadingEnt ? 'Вход...' : 'Войти'}
+          <button className="btn btn-primary" onClick={handleEnt} style={{ borderRadius: 12, marginBottom: 10 }}>
+            Войти
           </button>
         </div>
 

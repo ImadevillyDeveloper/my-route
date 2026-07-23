@@ -22,6 +22,7 @@ interface Driver {
   route_number: string | null
   plate_number: string | null
   avatar_url: string | null
+  has_password: boolean
 }
 
 export const driverIdNumber = (id: number): string => {
@@ -91,6 +92,41 @@ function EditableRow({ icon, label, value, onChange, locked }: {
         <span style={{ color: 'var(--orange)', fontWeight: 600, fontSize: 14 }}>{value || '—'}</span>
       )}
       {locked && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
+    </div>
+  )
+}
+
+// Пароль никогда не показываем — только статус "задан/не задан" и поле для
+// ввода НОВОГО пароля (пустое при открытии, а не текущее значение).
+function PasswordRow({ hasPassword, onChange }: { hasPassword: boolean; onChange: (v: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const startEdit = () => {
+    setDraft(''); setEditing(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+  const save = () => {
+    setEditing(false)
+    if (draft.trim()) onChange(draft.trim())
+  }
+
+  return (
+    <div className="row-item" style={{ cursor: 'pointer' }} onClick={!editing ? startEdit : undefined}>
+      <OIcon>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </OIcon>
+      <span className="row-label">Пароль для входа</span>
+      {editing ? (
+        <input ref={inputRef} value={draft} placeholder="Новый пароль" onChange={e => setDraft(e.target.value)}
+          onBlur={save} onKeyDown={e => e.key === 'Enter' && save()}
+          style={{ flex: 1, textAlign: 'right', border: 'none', borderBottom: '1.5px solid var(--orange)', background: 'transparent', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', outline: 'none', color: 'var(--orange)' }} />
+      ) : (
+        <span style={{ color: hasPassword ? 'var(--text-muted)' : '#FF3B30', fontWeight: 600, fontSize: 14 }}>
+          {hasPassword ? 'Задан · нажмите, чтобы сменить' : 'Не задан'}
+        </span>
+      )}
     </div>
   )
 }
@@ -312,6 +348,7 @@ export default function EntDriverDetail() {
             onSelect={selectPlate}
             dataAttr="data-driver-plate-drop"
           />
+          <PasswordRow hasPassword={driver.has_password} onChange={v => save({ password: v })} />
           <EditableRow
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
             label="Парк" value={parkName} locked

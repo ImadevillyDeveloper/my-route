@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from .. import models, schemas
 from ..database import get_db
-from ..auth import get_current_user, get_current_driver
+from ..auth import get_current_user, get_current_driver, pwd_context
 from ..storage import save_upload
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
@@ -99,6 +99,7 @@ def create_driver(
     user = models.User(
         driver_id=driver_in.driver_id,
         full_name=driver_in.full_name,
+        hashed_password=pwd_context.hash(driver_in.password),
         phone=driver_in.phone or None,
         role=models.UserRole.driver,
         vehicle_plate=driver_in.plate_number or None,
@@ -135,6 +136,8 @@ def update_driver(
         user.full_name = update.full_name
     if update.phone is not None:
         user.phone = update.phone or None
+    if update.password:
+        user.hashed_password = pwd_context.hash(update.password)
     if update.driver_id is not None:
         new_vu = update.driver_id.strip() or None
         if new_vu and db.query(models.User).filter(
@@ -201,4 +204,7 @@ def _driver_out(user: models.User, db: Session) -> schemas.DriverOut:
         route_number=user.route_number,
         plate_number=user.vehicle_plate,
         avatar_url=user.avatar_url,
+        active_shift_start=user.active_shift_start,
+        active_shift_vehicle_plate=user.active_shift_vehicle_plate,
+        has_password=bool(user.hashed_password),
     )

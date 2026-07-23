@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/auth'
-import { loginAdmin, getAdminEntrepreneurs, createAdminEntrepreneur, deleteAdminEntrepreneur, setAdminEntrepreneurPartner, resolveAssetUrl, type AdminEntrepreneur } from '../../api/client'
+import { loginAdmin, getAdminEntrepreneurs, createAdminEntrepreneur, deleteAdminEntrepreneur, setAdminEntrepreneurPartner, setAdminEntrepreneurPassword, resolveAssetUrl, type AdminEntrepreneur } from '../../api/client'
 import { formatPhone, capitalizeName } from '../../utils/format'
 import LogoLoader from '../../components/common/LogoLoader'
 
@@ -63,6 +63,7 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
 function AddModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('+7')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -70,9 +71,10 @@ function AddModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => vo
     if (!name.trim()) { setError('Введите имя ИП'); return }
     const digits = phone.replace(/\D/g, '')
     if (digits.length < 11) { setError('Введите полный номер телефона'); return }
+    if (password.trim().length < 4) { setError('Пароль — минимум 4 символа'); return }
     setLoading(true); setError('')
     try {
-      await createAdminEntrepreneur(name.trim(), '+' + digits)
+      await createAdminEntrepreneur(name.trim(), '+' + digits, password.trim())
       onAdded()
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Не удалось добавить ИП')
@@ -93,6 +95,10 @@ function AddModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => vo
         <div style={{ fontSize: 12, fontWeight: 700, color: '#999', marginBottom: 6, textTransform: 'uppercase' }}>Телефон</div>
         <input className="form-input" placeholder="+7 (xxx) xxx-xx-xx" value={phone} type="tel"
           onChange={e => { setPhone(formatPhone(e.target.value)); setError('') }}
+          style={{ marginBottom: 14 }} />
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#999', marginBottom: 6, textTransform: 'uppercase' }}>Пароль для входа</div>
+        <input className="form-input" placeholder="Пароль" value={password} type="text"
+          onChange={e => { setPassword(e.target.value); setError('') }}
           onKeyDown={e => e.key === 'Enter' && submit()}
           style={{ marginBottom: 14 }} />
         {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
@@ -104,6 +110,49 @@ function AddModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => vo
           <button onClick={submit} disabled={loading}
             style={{ flex: 1, padding: '13px', borderRadius: 50, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
             {loading ? '...' : 'Добавить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PasswordModal({ ent, onClose, onChanged }: { ent: AdminEntrepreneur; onClose: () => void; onChanged: () => void }) {
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    if (password.trim().length < 4) { setError('Пароль — минимум 4 символа'); return }
+    setLoading(true); setError('')
+    try {
+      await setAdminEntrepreneurPassword(ent.id, password.trim())
+      onChanged()
+    } catch {
+      setError('Не удалось сменить пароль')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 360, padding: '22px 22px 24px' }}>
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Сменить пароль</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>{ent.full_name}</div>
+        <input className="form-input" placeholder="Новый пароль" value={password} type="text"
+          onChange={e => { setPassword(e.target.value); setError('') }}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          style={{ marginBottom: 14 }} autoFocus />
+        {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} disabled={loading}
+            style={{ flex: 1, padding: '13px', borderRadius: 50, border: '2px solid var(--border)', background: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+            Отмена
+          </button>
+          <button onClick={submit} disabled={loading}
+            style={{ flex: 1, padding: '13px', borderRadius: 50, border: 'none', background: 'var(--orange)', color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+            {loading ? '...' : 'Сохранить'}
           </button>
         </div>
       </div>
@@ -158,6 +207,7 @@ function AdminEntrepreneurs() {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [toDelete, setToDelete] = useState<AdminEntrepreneur | null>(null)
+  const [toChangePassword, setToChangePassword] = useState<AdminEntrepreneur | null>(null)
   const logout = useAuthStore(s => s.logout)
   const fullName = useAuthStore(s => s.fullName)
 
@@ -228,6 +278,10 @@ function AdminEntrepreneurs() {
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, opacity: e.is_partner ? 1 : 0.25, filter: e.is_partner ? 'none' : 'grayscale(1)' }}>
               <img src="/fire.png" alt="partner" style={{ width: 20, height: 20, display: 'block' }} />
             </button>
+            <button onClick={() => setToChangePassword(e)} title="Сменить пароль"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: 'var(--text-muted)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            </button>
             <button onClick={() => setToDelete(e)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: '#FF3B30' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -237,6 +291,7 @@ function AdminEntrepreneurs() {
       </div>
 
       {showAdd && <AddModal onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load() }} />}
+      {toChangePassword && <PasswordModal ent={toChangePassword} onClose={() => setToChangePassword(null)} onChanged={() => setToChangePassword(null)} />}
       {toDelete && <DeleteModal ent={toDelete} onClose={() => setToDelete(null)} onDeleted={() => { setToDelete(null); load() }} />}
     </div>
   )
