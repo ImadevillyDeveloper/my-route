@@ -64,7 +64,10 @@ export default function DriverLayout() {
   const isReportActive = location.pathname === '/driver/report'
   const unreadChat = useUnreadChatCount()
 
-  useEffect(() => { initPushNotifications() }, [])
+  useEffect(() => {
+    initPushNotifications(conversationKey => navigate('/driver/chat', { state: { conversationKey } }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="layout-root">

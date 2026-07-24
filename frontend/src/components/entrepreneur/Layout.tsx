@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useUnreadChatCount } from '../chat/useUnreadChatCount'
 import BusIcon from '../common/BusIcon'
 import { initPushNotifications } from '../../push'
@@ -57,7 +57,12 @@ const navItems = [
 
 export default function EntrepreneurLayout() {
   const unreadChat = useUnreadChatCount()
-  useEffect(() => { initPushNotifications(); scheduleVehicleReminders() }, [])
+  const navigate = useNavigate()
+  useEffect(() => {
+    initPushNotifications(conversationKey => navigate('/entrepreneur/chat', { state: { conversationKey } }))
+    scheduleVehicleReminders()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="layout-root">

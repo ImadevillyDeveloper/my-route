@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   getChatConversations, getChatMessages, postChatMessage, getChatRouteMembers, setChatConversationState,
   resolveAssetUrl, editChatMessage, deleteChatMessage, getChatGroup, uploadChatGroupAvatar,
@@ -512,6 +513,7 @@ export default function ChatScreen() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [active, setActive] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messagesLoaded, setMessagesLoaded] = useState(false)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
@@ -581,6 +583,24 @@ export default function ChatScreen() {
     return () => clearInterval(t)
   }, [])
 
+  // Открытие по тапу на push-уведомление о новом сообщении (см. push.ts) —
+  // ключ диалога приходит через location.state, ждём загрузки списка чатов,
+  // чтобы найти в нём подходящий Conversation, и сразу же чистим state, иначе
+  // при следующем ре-рендере снова попытались бы открыть тот же диалог.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const pendingConversationKey = (location.state as any)?.conversationKey as string | undefined
+
+  useEffect(() => {
+    if (!pendingConversationKey || !loadedList) return
+    const found = conversations.find(c => c.key === pendingConversationKey)
+    if (found) {
+      openConversation(found)
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingConversationKey, loadedList, conversations])
+
   useEffect(() => { activeKeyRef.current = active?.key ?? null }, [active])
 
   // Route mates reachable for a fresh DM even before any messages exist between us.
@@ -602,6 +622,7 @@ export default function ChatScreen() {
     getChatMessages(key).then(r => {
       if (activeKeyRef.current !== key) return
       setMessages(prev => [...r.data, ...prev.filter(m => m.pending || m.failed)])
+      setMessagesLoaded(true)
       if (opts?.forceScroll || wasNearBottom) {
         setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
       }
@@ -633,6 +654,7 @@ export default function ChatScreen() {
 
   const openConversation = (c: Conversation) => {
     setMessages([])
+    setMessagesLoaded(false)
     setGroupInfo(null)
     setEditingId(null)
     setReplyingTo(null)
@@ -1320,7 +1342,11 @@ export default function ChatScreen() {
         </div>
 
         <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 8, background: '#F7F7F7' }}>
-          {messages.length === 0 && (
+          {!messagesLoaded ? (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+              <LogoLoader size={32} />
+            </div>
+          ) : messages.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginTop: 24 }}>
               Сообщений пока нет. Напишите первым!
             </div>
