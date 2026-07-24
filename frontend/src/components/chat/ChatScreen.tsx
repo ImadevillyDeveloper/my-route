@@ -291,6 +291,21 @@ const dayLabel = (iso: string) => {
 const messageTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 
+// Опрос сервера (каждые 5с) и подтверждение отправленного сообщения — это две
+// независимые гонки: опрос может успеть подтянуть уже сохранённое на сервере
+// сообщение раньше, чем наш собственный POST вернёт ответ и заменит локальный
+// "отправляется..." пузырь тем же сообщением по id. Без схлопывания дублей
+// это на секунду показывает одно и то же сообщение дважды, пока следующий
+// опрос сам не отфильтрует уже неактуальный "pending"-дубль.
+const dedupeMessagesById = (list: ChatMessage[]): ChatMessage[] => {
+  const seen = new Set<number>()
+  return list.filter(m => {
+    if (seen.has(m.id)) return false
+    seen.add(m.id)
+    return true
+  })
+}
+
 const formatDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 const formatBytes = (n: number) => {
@@ -621,7 +636,7 @@ export default function ChatScreen() {
     const wasNearBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120
     getChatMessages(key).then(r => {
       if (activeKeyRef.current !== key) return
-      setMessages(prev => [...r.data, ...prev.filter(m => m.pending || m.failed)])
+      setMessages(prev => dedupeMessagesById([...r.data, ...prev.filter(m => m.pending || m.failed)]))
       setMessagesLoaded(true)
       if (opts?.forceScroll || wasNearBottom) {
         setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 30)
@@ -843,7 +858,7 @@ export default function ChatScreen() {
     scrollToBottom()
     try {
       const res = await postChatMessage(active.key, value, replyTo?.id)
-      setMessages(prev => prev.map(m => m.id === optimistic.id ? res.data : m))
+      setMessages(prev => dedupeMessagesById(prev.map(m => m.id === optimistic.id ? res.data : m)))
       loadConversations()
     } catch {
       setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, pending: false, failed: true } : m))
@@ -875,7 +890,7 @@ export default function ChatScreen() {
     scrollToBottom()
     try {
       const res = await uploadChatAttachment(active.key, file, kind, fullOpts)
-      setMessages(prev => prev.map(m => m.id === optimistic.id ? res.data : m))
+      setMessages(prev => dedupeMessagesById(prev.map(m => m.id === optimistic.id ? res.data : m)))
       loadConversations()
       URL.revokeObjectURL(localUrl)
       pendingFilesRef.current.delete(optimistic.id)
@@ -895,7 +910,7 @@ export default function ChatScreen() {
       }
       uploadChatAttachment(active.key, payload.file, payload.kind, payload.opts)
         .then(res => {
-          setMessages(prev => prev.map(x => x.id === m.id ? res.data : x))
+          setMessages(prev => dedupeMessagesById(prev.map(x => x.id === m.id ? res.data : x)))
           loadConversations()
           if (m.localUrl) URL.revokeObjectURL(m.localUrl)
           pendingFilesRef.current.delete(m.id)
@@ -904,7 +919,7 @@ export default function ChatScreen() {
     } else {
       postChatMessage(active.key, m.text)
         .then(res => {
-          setMessages(prev => prev.map(x => x.id === m.id ? res.data : x))
+          setMessages(prev => dedupeMessagesById(prev.map(x => x.id === m.id ? res.data : x)))
           loadConversations()
         })
         .catch(() => setMessages(prev => prev.map(x => x.id === m.id ? { ...x, pending: false, failed: true } : x)))
