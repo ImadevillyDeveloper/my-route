@@ -81,32 +81,15 @@ def _can_access(key: str, user: models.User, db: Session) -> bool:
     return False
 
 
-def _conversation_recipients(key: str, sender: models.User, db: Session) -> list[models.User]:
-    """Кому слать push о новом сообщении в этом чате (кроме самого отправителя)."""
-    if key.startswith("dm:"):
-        parts = key.split(":")
-        if len(parts) != 3:
-            return []
-        try:
-            ids = {int(parts[1]), int(parts[2])}
-        except ValueError:
-            return []
-        other_id = next(iter(ids - {sender.id}), None)
-        if other_id is None:
-            return []
-        other = db.query(models.User).filter_by(id=other_id).first()
-        return [other] if other else []
-    if key.startswith("route:"):
-        route = key.split(":", 1)[1]
-        drivers = db.query(models.User).filter_by(role=models.UserRole.driver, route_number=route).all()
-        owner_ids = {d.owner_id for d in drivers if d.owner_id}
-        entrepreneurs = db.query(models.User).filter(models.User.id.in_(owner_ids)).all() if owner_ids else []
-        return [u for u in (*drivers, *entrepreneurs) if u.id != sender.id]
-    return []
-
-
 def _notify_new_message(key: str, sender: models.User, preview: str, db: Session) -> None:
-    for user in _conversation_recipients(key, sender, db):
+    """Кому слать push о новом сообщении в этом чате — переиспользует
+    _conversation_recipients(key, sender_id, db) ниже по файлу (уже учитывает
+    ChatGroupRemoved и т.п.), просто дотягивает push_token по id."""
+    recipient_ids = _conversation_recipients(key, sender.id, db)
+    if not recipient_ids:
+        return
+    users = db.query(models.User).filter(models.User.id.in_(recipient_ids)).all()
+    for user in users:
         send_push(user.push_token, sender.full_name, preview[:120], {"conversation_key": key})
 
 
