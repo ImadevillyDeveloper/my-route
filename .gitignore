@@ -37,6 +37,7 @@ frontend/build/
 screenshots/
 *.png
 !frontend/public/*.png
+!frontend/android/app/src/main/res/**/*.png
 design_ent/
 design_pages/
 
