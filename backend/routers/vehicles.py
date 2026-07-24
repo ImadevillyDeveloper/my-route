@@ -49,6 +49,32 @@ def list_vehicles(
     return [_vehicle_out(v, db) for v in q.all()]
 
 
+@router.get("/reminders", response_model=list[schemas.VehicleReminderOut])
+def list_vehicle_reminders(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Сроки ОСАГО/КАСКО/ТО и настройки напоминаний по всем ТС — одним запросом,
+    чтобы приложение могло разом расписать локальные уведомления на устройстве."""
+    q = db.query(models.Vehicle)
+    if current_user.role == models.UserRole.entrepreneur:
+        q = q.filter(models.Vehicle.owner_id == current_user.id)
+    vehicles = q.all()
+    result = []
+    for v in vehicles:
+        ins = db.query(models.Insurance).filter_by(vehicle_id=v.id).first()
+        maint = db.query(models.Maintenance).filter_by(vehicle_id=v.id).first()
+        result.append(schemas.VehicleReminderOut(
+            vehicle_id=v.id,
+            plate_number=v.plate_number,
+            kasko_end_date=ins.kasko_end_date if ins else None,
+            osago_end_date=ins.end_date if ins else None,
+            to_next_date=maint.next_date if maint else None,
+            reminders_json=maint.reminders_json if maint else None,
+        ))
+    return result
+
+
 @router.get("/available-for-report", response_model=list[schemas.VehicleOut])
 def get_available_vehicles_for_report(
     route_number: str = Query(...),

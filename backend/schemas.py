@@ -132,6 +132,7 @@ class UserUpdate(BaseModel):
     terminal_stops_json: Optional[str] = None
     active_shift_vehicle_plate: Optional[str] = None
     schedule_routes_json: Optional[str] = None
+    push_token: Optional[str] = None
 
 
 # Admin
@@ -555,6 +556,15 @@ class InsuranceOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class VehicleReminderOut(BaseModel):
+    vehicle_id: int
+    plate_number: str
+    kasko_end_date: Optional[date] = None
+    osago_end_date: Optional[date] = None
+    to_next_date: Optional[date] = None
+    reminders_json: Optional[str] = None
 
 
 # Salary

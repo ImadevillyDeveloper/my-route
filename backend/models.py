@@ -82,6 +82,7 @@ class User(Base):
     schedule_routes_json = Column(Text, nullable=True)    # JSON-массив маршрутов из числа конкурентных, которые показывать в расписании на конечной; NULL = показывать все конкурентные
     active_shift_vehicle_plate = Column(String, nullable=True)  # ТС выбранное водителем ТОЛЬКО на текущую смену (не меняет постоянное vehicle_plate)
     is_partner = Column(Boolean, default=False, nullable=True)  # метка "партнёр проекта" — назначается только админом
+    push_token = Column(String, nullable=True)  # FCM device token (для push-уведомлений в приложении)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(UTCDateTime, server_default=func.now())
     last_seen_at = Column(UTCDateTime, nullable=True)  # обновляется при каждом запросе (throttled)

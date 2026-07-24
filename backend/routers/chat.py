@@ -8,6 +8,7 @@ from .. import models, schemas
 from ..database import get_db
 from ..auth import get_current_user
 from ..storage import save_upload
+from ..push import send_push
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -78,6 +79,35 @@ def _can_access(key: str, user: models.User, db: Session) -> bool:
         return other.owner_id == user.id and other.role == models.UserRole.driver
 
     return False
+
+
+def _conversation_recipients(key: str, sender: models.User, db: Session) -> list[models.User]:
+    """Кому слать push о новом сообщении в этом чате (кроме самого отправителя)."""
+    if key.startswith("dm:"):
+        parts = key.split(":")
+        if len(parts) != 3:
+            return []
+        try:
+            ids = {int(parts[1]), int(parts[2])}
+        except ValueError:
+            return []
+        other_id = next(iter(ids - {sender.id}), None)
+        if other_id is None:
+            return []
+        other = db.query(models.User).filter_by(id=other_id).first()
+        return [other] if other else []
+    if key.startswith("route:"):
+        route = key.split(":", 1)[1]
+        drivers = db.query(models.User).filter_by(role=models.UserRole.driver, route_number=route).all()
+        owner_ids = {d.owner_id for d in drivers if d.owner_id}
+        entrepreneurs = db.query(models.User).filter(models.User.id.in_(owner_ids)).all() if owner_ids else []
+        return [u for u in (*drivers, *entrepreneurs) if u.id != sender.id]
+    return []
+
+
+def _notify_new_message(key: str, sender: models.User, preview: str, db: Session) -> None:
+    for user in _conversation_recipients(key, sender, db):
+        send_push(user.push_token, sender.full_name, preview[:120], {"conversation_key": key})
 
 
 def _is_route_owner(route: str, user: models.User, db: Session) -> bool:
@@ -655,6 +685,7 @@ def post_message(
     db.commit()
     db.refresh(msg)
     _mark_read(current_user.id, body.conversation_key, db)
+    _notify_new_message(body.conversation_key, current_user, text, db)
 
     return _message_out(msg, current_user, current_user.avatar_url, reply_to=reply_to)
 
@@ -714,6 +745,8 @@ async def upload_chat_attachment(
     db.commit()
     db.refresh(msg)
     _mark_read(current_user.id, conversation_key, db)
+    attachment_labels = {"image": "📷 Фото", "file": "📎 Файл", "voice": "🎤 Голосовое", "video_note": "📹 Видео"}
+    _notify_new_message(conversation_key, current_user, caption or attachment_labels.get(kind, "Вложение"), db)
 
     return _message_out(msg, current_user, current_user.avatar_url, reply_to=reply_to)
 

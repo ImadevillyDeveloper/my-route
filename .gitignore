@@ -16,6 +16,10 @@ build/
 # Загрузки
 uploads/
 
+# Секреты Firebase (никогда не коммитим)
+firebase-service-account.json
+frontend/android/app/google-services.json
+
 # Node
 node_modules/
 frontend/node_modules/

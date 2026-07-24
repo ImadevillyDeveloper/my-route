@@ -39,7 +39,7 @@ export default function PasswordReset() {
   }
 
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#F2F2F2', overflow: 'hidden' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: '#F2F2F2' }}>
       <div style={{ background: 'var(--orange)', padding: '10px 16px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <button onClick={() => navigate('/login/password', { state: { role, identifier } })}
           style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 10px', color: 'white', fontSize: 18, cursor: 'pointer' }}>←</button>
@@ -49,7 +49,7 @@ export default function PasswordReset() {
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ flex: 1, padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
         <div style={{ width: '100%', maxWidth: 400 }}>
           <div style={{ background: 'white', borderRadius: 16, padding: '18px', marginBottom: 18 }}>
             <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Как получить код</div>

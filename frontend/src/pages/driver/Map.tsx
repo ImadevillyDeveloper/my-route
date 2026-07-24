@@ -66,6 +66,11 @@ interface MarkerEntry {
 
 const ANIM_DURATION_MS = 8000  // spread movement over 8 s (< 10 s poll interval)
 
+// ИИ-подсказки и голосовой помощник временно скрыты от пользователей (по всем
+// экранам — карта + настройки) — не удаляем логику, просто не даём её увидеть
+// или включить. Единая точка отключения, чтобы не искать все места по коду.
+const AI_FEATURES_ENABLED = false
+
 // ── Параметры автоопределения прибытия на конечную по GPS (подбираемые) ──
 const TRIP_ARRIVAL_RADIUS_M = 150  // метров — в этом радиусе от конечной считаем, что водитель "прибыл"
 const TRIP_DWELL_S = 25            // секунд непрерывно в радиусе, прежде чем предложить закрыть рейс (отсекает проезд мимо)
@@ -635,7 +640,7 @@ export default function DriverMap() {
       setLiveError(false)
 
       // Fetch AI hint — use Navitrans position if tracked, otherwise GPS
-      if (!hintsEnabledRef.current) { setHint(null); return }
+      if (!AI_FEATURES_ENABLED || !hintsEnabledRef.current) { setHint(null); return }
       const navPos = navDriverPosRef.current
       const gpsPos = positionRef.current
       const activePos = navPos ?? gpsPos
@@ -1068,10 +1073,12 @@ export default function DriverMap() {
         <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: '4px 10px', color: 'white', fontWeight: 800, fontSize: 15 }}>
           №{driverRoute}
         </div>
-        <button onClick={() => setVoiceOn(v => { const next = !v; voiceOnRef.current = next; updateMe({ voice_enabled: next }).catch(() => {}); return next })}
-          style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontSize: 16 }}>
-          {voiceOn ? '🔊' : '🔇'}
-        </button>
+        {AI_FEATURES_ENABLED && (
+          <button onClick={() => setVoiceOn(v => { const next = !v; voiceOnRef.current = next; updateMe({ voice_enabled: next }).catch(() => {}); return next })}
+            style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontSize: 16 }}>
+            {voiceOn ? '🔊' : '🔇'}
+          </button>
+        )}
       </div>
 
       {/* Постоянная строка статуса навигации */}
@@ -1240,7 +1247,7 @@ export default function DriverMap() {
           </div>
         )}
 
-        {hintsEnabled && (() => {
+        {AI_FEATURES_ENABLED && hintsEnabled && (() => {
           if (!hint) return (
             <div style={{ background: '#F5F5F5', border: '1.5px solid #E0E0E0', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 18 }}>💡</span>

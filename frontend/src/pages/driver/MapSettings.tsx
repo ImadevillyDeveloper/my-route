@@ -308,7 +308,10 @@ export default function DriverMapSettings() {
           </div>
         )}
 
-        {/* Voice toggle */}
+        {/* ИИ-подсказки и голосовой помощник временно скрыты от пользователей —
+            логика/тумблеры оставлены в коде, просто не рендерятся (см. также
+            driver/Map.tsx, где отключён сам показ подсказок/кнопки звука). */}
+        {false && (
         <div className="card">
           <div className="row-item">
             <div className="row-icon">
@@ -329,6 +332,7 @@ export default function DriverMapSettings() {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Autocomplete dropdown (fixed, чтобы не обрезался overflow:hidden карточки) */}

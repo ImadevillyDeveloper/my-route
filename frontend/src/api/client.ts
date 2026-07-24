@@ -227,6 +227,15 @@ export const uploadMyPhoto = (file: File) => {
   return api.post('/users/me/photo', fd);
 };
 export const getVehiclesMap = () => api.get('/vehicles/map');
+export interface VehicleReminder {
+  vehicle_id: number
+  plate_number: string
+  kasko_end_date: string | null
+  osago_end_date: string | null
+  to_next_date: string | null
+  reminders_json: string | null
+}
+export const getVehicleReminders = () => api.get<VehicleReminder[]>('/vehicles/reminders');
 export const getVehicle = (id: number) => api.get(`/vehicles/${id}`);
 export const getVehicleRepairs = (id: number) => api.get(`/vehicles/${id}/repairs`);
 export const getVehicleInsurance = (id: number) => api.get(`/vehicles/${id}/insurance`);

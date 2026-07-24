@@ -54,6 +54,8 @@ def update_me(
         current_user.terminal_stops_json = update.terminal_stops_json
     if update.schedule_routes_json is not None:
         current_user.schedule_routes_json = update.schedule_routes_json
+    if update.push_token is not None:
+        current_user.push_token = update.push_token
     db.commit()
     db.refresh(current_user)
     return current_user

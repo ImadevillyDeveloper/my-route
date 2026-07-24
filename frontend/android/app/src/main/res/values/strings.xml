@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Мой.Маршрут</string>
+    <string name="title_activity_main">Мой.Маршрут</string>
+    <string name="package_name">ru.moymarshrut.app</string>
+    <string name="custom_url_scheme">ru.moymarshrut.app</string>
+</resources>

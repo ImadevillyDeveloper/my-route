@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useUnreadChatCount } from '../chat/useUnreadChatCount'
 import BusIcon from '../common/BusIcon'
+import { initPushNotifications } from '../../push'
 
 const CHAT_BADGE = (unread: number) => unread > 0 && (
   <span style={{ position: 'absolute', top: -3, right: -3, background: '#FF3B30', color: 'white', fontSize: 9, fontWeight: 700, borderRadius: 8, minWidth: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '1.5px solid white' }}>
@@ -62,6 +63,8 @@ export default function DriverLayout() {
   const location = useLocation()
   const isReportActive = location.pathname === '/driver/report'
   const unreadChat = useUnreadChatCount()
+
+  useEffect(() => { initPushNotifications() }, [])
 
   return (
     <div className="layout-root">
