@@ -226,8 +226,10 @@ export default function EntReportDetail() {
   const handleDelete = async () => {
     try {
       await deleteReport(Number(id))
-    } catch {}
-    navigate('/entrepreneur/reports')
+      navigate('/entrepreneur/reports')
+    } catch {
+      alert('Не удалось удалить отчёт. Проверьте соединение и попробуйте ещё раз.')
+    }
   }
 
   const [trips,       setTrips]       = useState('')

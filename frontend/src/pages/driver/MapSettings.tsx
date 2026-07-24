@@ -89,10 +89,12 @@ export default function DriverMapSettings() {
   const [namedStops, setNamedStops] = useState<NamedStop[]>([])
   const [terminalMap, setTerminalMap] = useState<Record<string, { stop_name: string; lat: number; lng: number; st_id?: string | null }>>({})
   const [scheduleRoutes, setScheduleRoutes] = useState<string[]>([])
+  const [loadError, setLoadError] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    (async () => {
+  const loadSettings = () => {
+    setLoadError(false)
+    ;(async () => {
       try {
         const r = await getMe()
         const route = r.data.route_number
@@ -123,15 +125,22 @@ export default function DriverMapSettings() {
         } catch { setScheduleRoutes(savedRivals) }
         setHintsOn(r.data.hints_enabled !== false)
         setVoiceOn(r.data.voice_enabled !== false)
-      } finally {
-        // Показываем страницу только когда реальные данные (включая маршрут,
-        // конечные и остановки) уже подгружены — иначе на секунду мелькают
-        // значения по умолчанию (включённые тумблеры, отсутствующая карточка).
+        // userLoaded открывает эффекты автосохранения ниже — включаем его
+        // ТОЛЬКО после успешной загрузки настоящих данных. Если getMe()
+        // упадёт (например, бэкенд на Render ещё не проснулся после
+        // переустановки APK), нельзя пускать пустые rivals/terminalMap в
+        // updateMe — это молча затрёт уже сохранённые настройки нулями.
         setUserLoaded(true)
+      } catch {
+        setLoadError(true)
       }
     })()
+  }
 
+  useEffect(() => {
+    loadSettings()
     getKnownRoutes().then(r => setAllRoutes(r.data)).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const selectTerminalStop = (terminalName: string, stop: NamedStop) => {
@@ -211,6 +220,12 @@ export default function DriverMapSettings() {
     })
   }
 
+  if (loadError) return (
+    <div className="page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 24, textAlign: 'center' }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Не удалось загрузить настройки. Проверьте соединение и попробуйте ещё раз.</div>
+      <button className="btn-primary" style={{ width: 'auto', padding: '10px 24px' }} onClick={loadSettings}>Повторить</button>
+    </div>
+  )
   if (!userLoaded) return <LogoLoader fullPage />
 
   return (

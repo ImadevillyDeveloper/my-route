@@ -162,6 +162,11 @@ def delete_report(
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
     if not report:
         raise HTTPException(404, "Report not found")
+    # Рейсы смены ссылаются на report_id (FK) — в Postgres это чужой ключ без
+    # каскада, поэтому удаление отчёта с привязанными рейсами упадёт с
+    # IntegrityError, если сначала их не отвязать (сами рейсы как история GPS
+    # не удаляем, только снимаем привязку к удаляемому отчёту).
+    db.query(models.Trip).filter(models.Trip.report_id == report_id).update({"report_id": None})
     db.delete(report)
     db.commit()
 
